@@ -97,7 +97,7 @@ class DatabaseManager:
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     session_id VARCHAR(255) UNIQUE NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
+                ) ENGINE=InnoDB;
                 """,
                 """
                 CREATE TABLE IF NOT EXISTS voice_logs (
@@ -113,7 +113,7 @@ class DatabaseManager:
                     classification_latency_ms INT,
                     response_latency_ms INT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
+                ) ENGINE=InnoDB;
                 """,
                 """
                 CREATE TABLE IF NOT EXISTS network_metrics (
@@ -124,14 +124,74 @@ class DatabaseManager:
                     jitter_ms INT,
                     bandwidth_kbps FLOAT,
                     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
+                ) ENGINE=InnoDB;
+                """,
                 """
+                CREATE TABLE IF NOT EXISTS zonas (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    nombre VARCHAR(255) UNIQUE NOT NULL,
+                    estado VARCHAR(255) NOT NULL
+                ) ENGINE=InnoDB;
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS equipos_red (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    nombre VARCHAR(255) UNIQUE NOT NULL,
+                    zona_id INT NOT NULL,
+                    cpu_usage FLOAT NOT NULL,
+                    mem_usage FLOAT NOT NULL,
+                    packet_loss FLOAT NOT NULL,
+                    interface_status VARCHAR(255) NOT NULL,
+                    FOREIGN KEY (zona_id) REFERENCES zonas(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB;
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS clientes (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    nombre VARCHAR(255) NOT NULL,
+                    dni VARCHAR(255) UNIQUE NOT NULL,
+                    router_sn VARCHAR(255) UNIQUE NOT NULL,
+                    zona_id INT NOT NULL,
+                    FOREIGN KEY (zona_id) REFERENCES zonas(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB;
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS incidencias (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    session_id VARCHAR(255) NOT NULL,
+                    cliente_id INT NOT NULL,
+                    descripcion TEXT,
+                    nivel_gravedad VARCHAR(255),
+                    estado VARCHAR(255),
+                    creado_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (session_id) REFERENCES conversations(session_id) ON DELETE CASCADE,
+                    FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB;
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS reportes_tecnicos (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    incidencia_id INT NOT NULL,
+                    diagnostico TEXT,
+                    confianza FLOAT,
+                    detalles_tecnicos TEXT,
+                    creado_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (incidencia_id) REFERENCES incidencias(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB;
+                """
+            ]
+            seed_queries = [
+                "INSERT IGNORE INTO zonas (id, nombre, estado) VALUES (1, 'Norte', 'falla_individual'), (2, 'Sur', 'operativo'), (3, 'Centro', 'falla_masiva'), (4, 'Este', 'operativo');",
+                "INSERT IGNORE INTO equipos_red (id, nombre, zona_id, cpu_usage, mem_usage, packet_loss, interface_status) VALUES (1, 'Router-Norte-01', 1, 88.0, 75.0, 4.5, 'up'), (2, 'Router-Sur-01', 2, 25.0, 40.0, 0.0, 'up'), (3, 'Router-Centro-01', 3, 99.0, 95.0, 15.0, 'down'), (4, 'Router-Este-01', 4, 30.0, 45.0, 0.0, 'up');",
+                "INSERT IGNORE INTO clientes (id, nombre, dni, router_sn, zona_id) VALUES (1, 'Diego Torres', '12345678', 'RT000001', 1), (2, 'Sergio Perez', '87654321', 'RT000002', 2), (3, 'Maria Gomez', '11112222', 'RT000003', 3), (4, 'Juan Lopez', '33334444', 'RT000004', 4);"
             ]
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cur:
                     for query in queries:
                         await cur.execute(query)
-            logger.info("MySQL tables checked/created.")
+                    for seed in seed_queries:
+                        await cur.execute(seed)
+            logger.info("MySQL tables checked, created, and seeded.")
         else:
             # SQLite Schema
             queries = [
@@ -168,21 +228,82 @@ class DatabaseManager:
                     bandwidth_kbps REAL,
                     recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 );
+                """,
                 """
+                CREATE TABLE IF NOT EXISTS zonas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT UNIQUE NOT NULL,
+                    estado TEXT NOT NULL
+                );
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS equipos_red (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT UNIQUE NOT NULL,
+                    zona_id INTEGER NOT NULL,
+                    cpu_usage REAL NOT NULL,
+                    mem_usage REAL NOT NULL,
+                    packet_loss REAL NOT NULL,
+                    interface_status TEXT NOT NULL,
+                    FOREIGN KEY (zona_id) REFERENCES zonas(id) ON DELETE CASCADE
+                );
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS clientes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL,
+                    dni TEXT UNIQUE NOT NULL,
+                    router_sn TEXT UNIQUE NOT NULL,
+                    zona_id INTEGER NOT NULL,
+                    FOREIGN KEY (zona_id) REFERENCES zonas(id) ON DELETE CASCADE
+                );
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS incidencias (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    cliente_id INTEGER NOT NULL,
+                    descripcion TEXT,
+                    nivel_gravedad TEXT,
+                    estado TEXT,
+                    creado_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (session_id) REFERENCES conversations(session_id) ON DELETE CASCADE,
+                    FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
+                );
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS reportes_tecnicos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    incidencia_id INTEGER NOT NULL,
+                    diagnostico TEXT,
+                    confianza REAL,
+                    detalles_tecnicos TEXT,
+                    creado_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (incidencia_id) REFERENCES incidencias(id) ON DELETE CASCADE
+                );
+                """
+            ]
+            seed_queries = [
+                "INSERT OR IGNORE INTO zonas (id, nombre, estado) VALUES (1, 'Norte', 'falla_individual'), (2, 'Sur', 'operativo'), (3, 'Centro', 'falla_masiva'), (4, 'Este', 'operativo');",
+                "INSERT OR IGNORE INTO equipos_red (id, nombre, zona_id, cpu_usage, mem_usage, packet_loss, interface_status) VALUES (1, 'Router-Norte-01', 1, 88.0, 75.0, 4.5, 'up'), (2, 'Router-Sur-01', 2, 25.0, 40.0, 0.0, 'up'), (3, 'Router-Centro-01', 3, 99.0, 95.0, 15.0, 'down'), (4, 'Router-Este-01', 4, 30.0, 45.0, 0.0, 'up');",
+                "INSERT OR IGNORE INTO clientes (id, nombre, dni, router_sn, zona_id) VALUES (1, 'Diego Torres', '12345678', 'RT000001', 1), (2, 'Sergio Perez', '87654321', 'RT000002', 2), (3, 'Maria Gomez', '11112222', 'RT000003', 3), (4, 'Juan Lopez', '33334444', 'RT000004', 4);"
             ]
             
             def _create_sqlite_tables():
                 conn = sqlite3.connect(self.sqlite_path)
                 try:
+                    conn.execute("PRAGMA foreign_keys = ON;")
                     cursor = conn.cursor()
                     for query in queries:
                         cursor.execute(query)
+                    for seed in seed_queries:
+                        cursor.execute(seed)
                     conn.commit()
                 finally:
                     conn.close()
 
             await asyncio.to_thread(_create_sqlite_tables)
-            logger.info("SQLite tables checked/created successfully.")
+            logger.info("SQLite tables checked, created, and seeded successfully.")
 
     async def create_conversation(self, session_id: str) -> bool:
         """Insert a new conversation session."""
@@ -314,6 +435,168 @@ class DatabaseManager:
         params = (session_id, latency_ms, packet_loss_rate, jitter_ms, bandwidth_kbps)
         return await self._execute(query, params)
 
+    async def get_client_by_identifier(self, login_type: str, login_value: str) -> dict | None:
+        """
+        Retrieve client info by DNI or Router S/N, including their zone name and status.
+        """
+        if self.use_sqlite:
+            query = """
+            SELECT c.id, c.nombre, c.dni, c.router_sn, c.zona_id, z.nombre as zona_nombre, z.estado as zona_estado
+            FROM clientes c
+            JOIN zonas z ON c.zona_id = z.id
+            WHERE {} = ?;
+            """.format("c.dni" if login_type.upper() == "DNI" else "c.router_sn")
+            params = (login_value,)
+        else:
+            query = """
+            SELECT c.id, c.nombre, c.dni, c.router_sn, c.zona_id, z.nombre as zona_nombre, z.estado as zona_estado
+            FROM clientes c
+            JOIN zonas z ON c.zona_id = z.id
+            WHERE {} = %s;
+            """.format("c.dni" if login_type.upper() == "DNI" else "c.router_sn")
+            params = (login_value,)
+
+        def _fetch_sqlite():
+            conn = sqlite3.connect(self.sqlite_path)
+            try:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute(query, params)
+                row = cursor.fetchone()
+                if row:
+                    return dict(row)
+                return None
+            finally:
+                conn.close()
+
+        if self.use_sqlite:
+            return await asyncio.to_thread(_fetch_sqlite)
+        else:
+            if not self.pool:
+                return None
+            try:
+                async with self.pool.acquire() as conn:
+                    async with conn.cursor(aiomysql.DictCursor) as cur:
+                        await cur.execute(query, params)
+                        row = await cur.fetchone()
+                        return row
+            except Exception as e:
+                logger.error(f"MySQL get_client_by_identifier error: {e}")
+                return None
+
+    async def get_network_status_by_zone(self, zona_id: int) -> dict | None:
+        """
+        Get network equipment parameters for a given zone.
+        """
+        if self.use_sqlite:
+            query = """
+            SELECT nombre, cpu_usage, mem_usage, packet_loss, interface_status
+            FROM equipos_red
+            WHERE zona_id = ?;
+            """
+            params = (zona_id,)
+        else:
+            query = """
+            SELECT nombre, cpu_usage, mem_usage, packet_loss, interface_status
+            FROM equipos_red
+            WHERE zona_id = %s;
+            """
+            params = (zona_id,)
+
+        def _fetch_sqlite():
+            conn = sqlite3.connect(self.sqlite_path)
+            try:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute(query, params)
+                row = cursor.fetchone()
+                if row:
+                    return dict(row)
+                return None
+            finally:
+                conn.close()
+
+        if self.use_sqlite:
+            return await asyncio.to_thread(_fetch_sqlite)
+        else:
+            if not self.pool:
+                return None
+            try:
+                async with self.pool.acquire() as conn:
+                    async with conn.cursor(aiomysql.DictCursor) as cur:
+                        await cur.execute(query, params)
+                        row = await cur.fetchone()
+                        return row
+            except Exception as e:
+                logger.error(f"MySQL get_network_status_by_zone error: {e}")
+                return None
+
+    async def create_incident_and_report(
+        self,
+        session_id: str,
+        cliente_id: int,
+        descripcion: str,
+        nivel_gravedad: str,
+        estado: str,
+        diagnostico: str,
+        confianza: float,
+        detalles_tecnicos: str
+    ) -> int | None:
+        """
+        Inserts an incident and its corresponding technical report, returning the incident ID.
+        """
+        if self.use_sqlite:
+            inc_query = """
+            INSERT INTO incidencias (session_id, cliente_id, descripcion, nivel_gravedad, estado)
+            VALUES (?, ?, ?, ?, ?);
+            """
+            inc_params = (session_id, cliente_id, descripcion, nivel_gravedad, estado)
+            
+            rep_query = """
+            INSERT INTO reportes_tecnicos (incidencia_id, diagnostico, confianza, detalles_tecnicos)
+            VALUES (?, ?, ?, ?);
+            """
+            
+            def _insert_sqlite():
+                conn = sqlite3.connect(self.sqlite_path)
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(inc_query, inc_params)
+                    inc_id = cursor.lastrowid
+                    cursor.execute(rep_query, (inc_id, diagnostico, confianza, detalles_tecnicos))
+                    conn.commit()
+                    return inc_id
+                except Exception as e:
+                    logger.error(f"SQLite create_incident_and_report error: {e}")
+                    return None
+                finally:
+                    conn.close()
+                    
+            return await asyncio.to_thread(_insert_sqlite)
+        else:
+            if not self.pool:
+                return None
+            try:
+                async with self.pool.acquire() as conn:
+                    async with conn.cursor() as cur:
+                        inc_query = """
+                        INSERT INTO incidencias (session_id, cliente_id, descripcion, nivel_gravedad, estado)
+                        VALUES (%s, %s, %s, %s, %s);
+                        """
+                        inc_params = (session_id, cliente_id, descripcion, nivel_gravedad, estado)
+                        await cur.execute(inc_query, inc_params)
+                        inc_id = conn.insert_id()
+                        
+                        rep_query = """
+                        INSERT INTO reportes_tecnicos (incidencia_id, diagnostico, confianza, detalles_tecnicos)
+                        VALUES (%s, %s, %s, %s);
+                        """
+                        await cur.execute(rep_query, (inc_id, diagnostico, confianza, detalles_tecnicos))
+                        return inc_id
+            except Exception as e:
+                logger.error(f"MySQL create_incident_and_report error: {e}")
+                return None
+
     async def _execute(self, query: str, params: tuple) -> bool:
         """Helper to run DB updates on MySQL or SQLite."""
         if not self.pool and not self.use_sqlite:
@@ -347,3 +630,4 @@ class DatabaseManager:
                 return False
 
 db = DatabaseManager()
+
