@@ -496,7 +496,7 @@
                 btnText.textContent = 'Verificar Conexión';
                 
                 console.log(`[Miranet Authentication] Successful simulation verify response. Redirecting to agent.html...`, payload);
-                window.location.href = 'agent.html';
+                window.location.href = `agent.html?type=${encodeURIComponent(payload.type)}&value=${encodeURIComponent(payload.value)}`;
             }, 2000);
         }
     </script>
