@@ -132,7 +132,9 @@ async def health_check():
 @app.websocket("/ws/voice")
 async def websocket_voice_endpoint(
     websocket: WebSocket,
-    session_id: str | None = Query(None)
+    session_id: str | None = Query(None),
+    login_type: str | None = Query(None),
+    login_value: str | None = Query(None)
 ):
     """
     WebSocket endpoint for real-time binary audio streaming.
@@ -147,11 +149,11 @@ async def websocket_voice_endpoint(
     if not session_id:
         session_id = f"session_{uuid.uuid4().hex[:8]}"
 
-    logger.info(f"New WebSocket client connected. Assigned Session ID: {session_id}")
+    logger.info(f"New WebSocket client connected. Assigned Session ID: {session_id} (Login: {login_type}={login_value})")
 
     # Register session in Orchestrator
     try:
-        await orchestrator.start_session(session_id)
+        await orchestrator.start_session(session_id, login_type, login_value)
     except Exception as e:
         logger.error(f"Failed to start session {session_id} in orchestrator: {e}")
         await websocket.close(code=1011, reason="Session initialization failed.")

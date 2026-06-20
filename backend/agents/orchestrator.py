@@ -22,19 +22,47 @@ class OrchestratorAgent:
         # Store active session contexts in memory
         self.active_sessions = {}
 
-    async def start_session(self, session_id: str):
+    async def start_session(
+        self, 
+        session_id: str, 
+        login_type: str | None = None, 
+        login_value: str | None = None
+    ):
         """Initialize resources and database records for a new session."""
-        logger.info(f"Starting session: {session_id}")
+        logger.info(f"Starting session: {session_id} (Login: {login_type}={login_value})")
         
         # Log to DB
         await db.create_conversation(session_id)
+        
+        # Fetch client info from local database using identifier
+        client_info = None
+        if login_type and login_value:
+            client_info = await db.get_client_by_identifier(login_type, login_value)
+            
+        # Fallback default client if lookup yields nothing
+        if not client_info:
+            logger.info("Client details not found or not provided, loading default customer session.")
+            client_info = {
+                "id": 2,
+                "nombre": "Sergio Perez (Consulta General)",
+                "dni": "87654321",
+                "router_sn": "RT000002",
+                "zona_id": 2,
+                "zona_nombre": "Sur",
+                "zona_estado": "operativo"
+            }
+            
+        # Fetch network status parameters for the zone
+        network_status = await db.get_network_status_by_zone(client_info["zona_id"])
         
         # Setup session context
         self.active_sessions[session_id] = {
             "audio_buffer": bytearray(),
             "sequence_counter": 0,
             "history": [],
-            "network_monitor": NetworkMonitorAgent()
+            "network_monitor": NetworkMonitorAgent(),
+            "client_info": client_info,
+            "network_status": network_status
         }
 
     async def append_audio_chunk(
@@ -66,9 +94,8 @@ class OrchestratorAgent:
         """
         Trigger the processing cascade:
         1. Whisper transcription of accumulated audio.
-        2. Ollama intent & sentiment classification.
-        3. Ollama contextual text response generation.
-        4. DB persistence.
+        2. Ollama intent & sentiment classification (with client/network parameters).
+        3. DB persistence (incidents & técnico reports).
         
         Returns:
             dict: The complete voice transaction metadata and response text.
@@ -110,22 +137,34 @@ class OrchestratorAgent:
                 "latencies": {"transcription": t_latency, "classification": 0, "responder": 0}
             }
 
-        # 2. Classify & Respond in a single call (bypassing old ClassifierAgent to save latency)
+        # 2. Classify & Respond using active context variables
         c_latency = 0
+        client_info = session.get("client_info")
+        network_status = session.get("network_status")
+        
         result_json, r_latency = await self.responder.generate_response(
             text=transcription,
-            history=session["history"]
+            history=session["history"],
+            client_info=client_info,
+            network_status=network_status
         )
         
         intent = result_json.get("nivel_asignado", "bajo")
-        sentiment = f"{result_json.get('diagnostico_causa_raiz', 'N/A')} ({result_json.get('porcentaje_confianza', '0%')})"
+        diagnostico = result_json.get("diagnostico_causa_raiz", "Problema general")
+        confianza_str = result_json.get("porcentaje_confianza", "90%").replace("%", "")
+        try:
+            confianza = float(confianza_str)
+        except ValueError:
+            confianza = 90.0
+            
+        sentiment = f"{diagnostico} ({confianza_str}%)"
         response = result_json.get("respuesta_cliente", "...")
 
         # Update Session History
         session["history"].append({"role": "user", "content": transcription})
         session["history"].append({"role": "assistant", "content": response})
 
-        # 4. Save to Database asynchronously
+        # 4. Save to Database: Log voice interaction
         await db.log_voice_interaction(
             session_id=session_id,
             sequence_number=sequence_num,
@@ -137,6 +176,26 @@ class OrchestratorAgent:
             transcription_latency_ms=t_latency,
             classification_latency_ms=c_latency,
             response_latency_ms=r_latency
+        )
+
+        # Save Incident & Technical Report (HU-10 / HU-12)
+        import json
+        detalles_json = json.dumps({
+            "client_name": client_info.get("nombre") if client_info else "N/A",
+            "dni": client_info.get("dni") if client_info else "N/A",
+            "router_sn": client_info.get("router_sn") if client_info else "N/A",
+            "zone": client_info.get("zona_nombre") if client_info else "N/A",
+            "network_status": network_status
+        })
+        await db.create_incident_and_report(
+            session_id=session_id,
+            cliente_id=client_info.get("id") if client_info else 2,
+            descripcion=transcription,
+            nivel_gravedad=intent,
+            estado="diagnosticando",
+            diagnostico=diagnostico,
+            confianza=confianza,
+            detalles_tecnicos=detalles_json
         )
 
         # Log current network summary stats to database
@@ -159,7 +218,11 @@ class OrchestratorAgent:
                 "transcription": t_latency,
                 "classification": c_latency,
                 "responder": r_latency
-            }
+            },
+            "client_info": client_info,
+            "network_status": network_status,
+            "diagnostico_causa_raiz": diagnostico,
+            "porcentaje_confianza": f"{confianza_str}%"
         }
 
     async def process_text_segment(self, session_id: str, transcription: str) -> dict:
@@ -188,13 +251,25 @@ class OrchestratorAgent:
         c_latency = 0
 
         # Respond (Ollama or Hybrid Matcher)
+        client_info = session.get("client_info")
+        network_status = session.get("network_status")
+        
         result_json, r_latency = await self.responder.generate_response(
             text=transcription,
-            history=session["history"]
+            history=session["history"],
+            client_info=client_info,
+            network_status=network_status
         )
         
         intent = result_json.get("nivel_asignado", "bajo")
-        sentiment = f"{result_json.get('diagnostico_causa_raiz', 'N/A')} ({result_json.get('porcentaje_confianza', '0%')})"
+        diagnostico = result_json.get("diagnostico_causa_raiz", "Problema general")
+        confianza_str = result_json.get("porcentaje_confianza", "90%").replace("%", "")
+        try:
+            confianza = float(confianza_str)
+        except ValueError:
+            confianza = 90.0
+            
+        sentiment = f"{diagnostico} ({confianza_str}%)"
         response = result_json.get("respuesta_cliente", "...")
 
         # Update Session History
@@ -213,6 +288,26 @@ class OrchestratorAgent:
             transcription_latency_ms=t_latency,
             classification_latency_ms=c_latency,
             response_latency_ms=r_latency
+        )
+
+        # Save Incident & Technical Report (HU-10 / HU-12)
+        import json
+        detalles_json = json.dumps({
+            "client_name": client_info.get("nombre") if client_info else "N/A",
+            "dni": client_info.get("dni") if client_info else "N/A",
+            "router_sn": client_info.get("router_sn") if client_info else "N/A",
+            "zone": client_info.get("zona_nombre") if client_info else "N/A",
+            "network_status": network_status
+        })
+        await db.create_incident_and_report(
+            session_id=session_id,
+            cliente_id=client_info.get("id") if client_info else 2,
+            descripcion=transcription,
+            nivel_gravedad=intent,
+            estado="diagnosticando",
+            diagnostico=diagnostico,
+            confianza=confianza,
+            detalles_tecnicos=detalles_json
         )
 
         # Log current network summary stats to database
@@ -235,8 +330,13 @@ class OrchestratorAgent:
                 "transcription": t_latency,
                 "classification": c_latency,
                 "responder": r_latency
-            }
+            },
+            "client_info": client_info,
+            "network_status": network_status,
+            "diagnostico_causa_raiz": diagnostico,
+            "porcentaje_confianza": f"{confianza_str}%"
         }
+
 
     async def end_session(self, session_id: str) -> dict:
         """Log final network diagnostics and release session context."""

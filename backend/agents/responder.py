@@ -21,7 +21,9 @@ class ResponderAgent:
     async def generate_response(
         self,
         text: str,
-        history: list[dict] = None
+        history: list[dict] = None,
+        client_info: dict = None,
+        network_status: dict = None
     ) -> tuple[dict, int]:
         """
         Generate a structured response (intent classification, diagnostic, confidence, spoken response)
@@ -43,28 +45,41 @@ class ResponderAgent:
             fallback_result["respuesta_cliente"] = "No te he podido escuchar claramente. ¿Podrías repetir, por favor?"
             return fallback_result, 0
 
-        # Construct dynamic prompt inserting the ESTADO_RED setting
+        # Construct dynamic context descriptions from DB objects
+        client_desc = "Desconocido"
+        net_desc = "Estable"
+        if client_info:
+            client_desc = f"Nombre: {client_info['nombre']}, DNI: {client_info['dni']}, Router S/N: {client_info['router_sn']}, Zona: {client_info['zona_nombre']} (Estado de Zona: {client_info['zona_estado']})"
+        if network_status:
+            net_desc = f"Equipo: {network_status['nombre']}, CPU: {network_status['cpu_usage']}%, Memoria: {network_status['mem_usage']}%, Pérdida de paquetes: {network_status['packet_loss']}%, Estado de interfaz: {network_status['interface_status']}"
+
+        # Cruce de zona logic to override network state
+        actual_network_state = client_info['zona_estado'] if client_info else settings.ESTADO_RED
+
+        # Construct dynamic prompt inserting the ESTADO_RED and zone/client settings
         system_instruction = (
             "Eres el núcleo de Inteligencia Artificial del Agente de Voz de la empresa de telecomunicaciones Miranet SAC (Año 2026). "
             "Tu función es procesar reportes de fallas de internet y actuar de manera síncrona como Operadora Automática y Técnico de Monitoreo.\n\n"
-            f"(La variable ESTADO_RED actual es: '{settings.ESTADO_RED}')\n\n"
+            f"INFORMACIÓN DEL CLIENTE CONECTADO:\n{client_desc}\n\n"
+            f"ESTADO DE MONITOREO DE RED DE LA ZONA (SNMP Mock):\n{net_desc}\n\n"
+            f"ESTADO GLOBAL/ZONAL DE RED ACTUAL: '{actual_network_state}'\n\n"
             "Debes seguir estas REGLAS DE COMPORTAMIENTO al pie de la letra:\n\n"
             "### 1. EVALUACIÓN Y CLASIFICACIÓN (HU-03) \n"
-            "Analiza el texto transcrito del cliente y clasifícalo estrictamente en uno de estos 4 niveles:\n"
+            "Analiza el texto transcrito del cliente y clasifícalo estrictamente en uno de estos 4 niveles de gravedad:\n"
             "- BAJO: Consultas generales o dudas comerciales.\n"
             "- MEDIO: Falla intermitente, lentitud o caídas esporádicas.\n"
             "- ALTO: Pérdida total del servicio (individual).\n"
-            "- CRÍTICO: El cliente menciona palabras como \"masivo\", \"toda la zona\", \"mis vecinos tampoco tienen\" OR la variable ESTADO_RED es igual a 'FALLA_MASIVA'.\n\n"
+            "- CRÍTICO: El cliente menciona palabras como \"masivo\", \"toda la zona\", \"mis vecinos tampoco tienen\" OR el estado global/zonal de la red es igual a 'falla_masiva' o 'FALLA_MASIVA'.\n\n"
             "### 2. CONTROL DE AMBIGÜEDAD (HU-04) \n"
-            "Si la descripción del cliente es vaga (ej. \"No da\"), tienes prohibido asumir datos. \n"
+            "Si la descripción del cliente es vaga (ej. \"No da\", \"se cayó\"), tienes prohibido asumir datos. \n"
             "- Formula una pregunta de aclaración específica (Ej: \"¿El problema es en todos sus dispositivos o solo en uno?\").\n"
             "- Máximo puedes hacer 2 preguntas de aclaración antes de derivar el caso.\n\n"
             "### 3. DIAGNÓSTICO DE CAUSA RAÍZ (HU-08) \n"
-            "Cruza el reporte con los parámetros simulados de red (ESTADO_RED). Genera una causa raíz técnica probable y asígnale un porcentaje de confianza estimado (ej. \"Saturación de enlace en Nodo - Confianza: 90%\").\n\n"
+            "Cruza el reporte con los parámetros de red. Genera una causa raíz técnica probable basada en las métricas SNMP del equipo de red de la zona del cliente (ej. si la interfaz está down, o el packet loss es alto) y asígnale un porcentaje de confianza estimado.\n\n"
             "### 4. CONCISIÓN ABSOLUTA EN CANAL DE VOZ (Regla de Oro)\n"
             "Estás hablando por teléfono, NO estás escribiendo un correo. Tus respuestas verbales al cliente deben ser directas, amables y cortas (MÁXIMO 2 ORACIONES o 25 PALABRAS). Está terminantemente prohibido explayarse en explicaciones técnicas innecesarias con el usuario.\n\n"
             "### 5. FORMATO DE SALIDA (Para el Orquestador Backend)\n"
-            "Siempre debes estructurar tu respuesta interna devolviendo este formato JSON plano para que el sistema guarde en Supabase (HU-12):\n"
+            "Siempre debes estructurar tu respuesta interna devolviendo este formato JSON plano para que el sistema guarde en la Base de Datos:\n"
             "{\n"
             '  "nivel_asignado": "[bajo/medio/alto/critico]",\n'
             '  "diagnostico_causa_raiz": "[Diagnóstico técnico breve]",\n'
@@ -141,13 +156,21 @@ class ResponderAgent:
             # Smart Hybrid Mock Matcher for Cloud/Render Support
             lower_text = text.lower()
             
-            # Check for simulated massive network failure first (HU-03 rule)
-            if settings.ESTADO_RED == "FALLA_MASIVA":
+            # 1. Check for simulated massive network failure first (HU-03 / HU-07 rule)
+            if actual_network_state.upper() == "FALLA_MASIVA":
                 result = {
                     "nivel_asignado": "critico",
-                    "diagnostico_causa_raiz": "Simulación: Avería Masiva Activa (ESTADO_RED)",
-                    "porcentaje_confianza": "100%",
-                    "respuesta_cliente": "Estimado usuario, registramos una avería masiva en su distrito. Ya estamos trabajando para restablecer el servicio."
+                    "diagnostico_causa_raiz": f"Avería Masiva en Zona: {network_status['nombre'] if network_status else 'Central'}",
+                    "porcentaje_confianza": "99%",
+                    "respuesta_cliente": f"Estimado {client_info['nombre'] if client_info else 'cliente'}, registramos una avería masiva en su distrito ({client_info['zona_nombre'] if client_info else 'de cobertura'}). Ya estamos trabajando para solucionarlo."
+                }
+            # 2. Control de Ambigüedad (HU-04)
+            elif len(text.strip()) < 12 and any(w in lower_text for w in ["no da", "ayuda", "falla", "malo", "se cayó", "se cayo", "no entra"]):
+                result = {
+                    "nivel_asignado": "bajo",
+                    "diagnostico_causa_raiz": "Descripción de incidencia ambigua (<70% confianza)",
+                    "porcentaje_confianza": "50%",
+                    "respuesta_cliente": "¿El inconveniente con su servicio de internet ocurre en todos sus dispositivos o solamente en uno?"
                 }
             # Greetings
             elif any(w in lower_text for w in ["hola", "buenas", "buen día", "buenos días", "buenas tardes", "buenas noches", "qué tal"]):
@@ -185,7 +208,7 @@ class ResponderAgent:
             elif any(w in lower_text for w in ["módem", "modem", "luz roja", "router", "antena", "cable", "fibra"]):
                 result = {
                     "nivel_asignado": "alto",
-                    "diagnostico_causa_raiz": "Pérdida de sincronía del módem / señal física",
+                    "diagnostico_causa_raiz": f"Pérdida de sincronía física del equipo: {network_status['nombre'] if network_status else 'Router'}",
                     "porcentaje_confianza": "85%",
                     "respuesta_cliente": "La luz roja indica pérdida de señal física. Por favor, asegúrese de que el cable de fibra esté bien conectado."
                 }
@@ -193,7 +216,7 @@ class ResponderAgent:
             elif any(w in lower_text for w in ["lento", "lentitud", "demora", "velocidad", "cargar", "cargando"]):
                 result = {
                     "nivel_asignado": "medio",
-                    "diagnostico_causa_raiz": "Saturación de enlace en Nodo",
+                    "diagnostico_causa_raiz": f"Saturación de enlace (CPU del equipo: {network_status['cpu_usage'] if network_status else '88'}%)",
                     "porcentaje_confianza": "90%",
                     "respuesta_cliente": "Detectamos una saturación temporal en su nodo de conexión. Procederemos a refrescar su señal de inmediato."
                 }
@@ -201,7 +224,7 @@ class ResponderAgent:
             elif any(w in lower_text for w in ["cae", "cayó", "cayo", "se fue", "no tengo", "no hay", "funciona", "servicios", "fallando", "falla", "sin internet"]):
                 result = {
                     "nivel_asignado": "alto",
-                    "diagnostico_causa_raiz": "Corte de fibra individual o router apagado",
+                    "diagnostico_causa_raiz": f"Pérdida de señal (Packet Loss: {network_status['packet_loss'] if network_status else '15'}%)",
                     "porcentaje_confianza": "80%",
                     "respuesta_cliente": "Lamento la pérdida del servicio. Estoy enviando un comando de reconexión a su módem para reactivarlo."
                 }
@@ -224,3 +247,4 @@ class ResponderAgent:
             
             logger.info(f"Hybrid response generated in {latency_ms}ms: {result}")
             return result, latency_ms
+
