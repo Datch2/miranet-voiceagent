@@ -135,16 +135,22 @@ function resizeCanvas() {
 // WebSocket Connections & Message Handlers
 // ----------------------------------------------------
 function connectWebSocket() {
-    // Determine ws vs wss, local host vs remote
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.port === '5500' ? 'localhost:8000' : (window.location.host || 'localhost:8000');
+    // Determine ws protocol and host (supports local running and GitHub Pages with local backend)
+    let wsProtocol = 'ws:';
+    let host = 'localhost:8000';
+    
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocalhost && window.location.port !== '5500') {
+        wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        host = window.location.host;
+    }
     
     // Read DNI/Router login credentials from URL query parameters
     const urlParams = new URLSearchParams(window.location.search);
     const loginType = urlParams.get('type') || '';
     const loginValue = urlParams.get('value') || '';
     
-    const wsUrl = `${protocol}//${host}/ws/voice?session_id=${sessionID}&login_type=${encodeURIComponent(loginType)}&login_value=${encodeURIComponent(loginValue)}`;
+    const wsUrl = `${wsProtocol}//${host}/ws/voice?session_id=${sessionID}&login_type=${encodeURIComponent(loginType)}&login_value=${encodeURIComponent(loginValue)}`;
     
     console.log(`Connecting to WebSocket: ${wsUrl}`);
     statusText.textContent = 'Conectando...';
@@ -209,9 +215,16 @@ function connectWebSocket() {
 
 async function fetchServerHealth() {
     try {
-        const protocol = window.location.protocol;
-        const host = window.location.port === '5500' ? 'localhost:8000' : (window.location.host || 'localhost:8000');
-        const response = await fetch(`${protocol}//${host}/health`);
+        let apiProtocol = 'http:';
+        let host = 'localhost:8000';
+        
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isLocalhost && window.location.port !== '5500') {
+            apiProtocol = window.location.protocol;
+            host = window.location.host;
+        }
+        
+        const response = await fetch(`${apiProtocol}//${host}/health`);
         const info = await response.json();
         
         if (info.status === 'online') {

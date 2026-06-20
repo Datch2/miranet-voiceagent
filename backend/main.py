@@ -11,6 +11,7 @@ sys.path.append(str(pathlib.Path(__file__).resolve().parent.parent))
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from backend.config import settings
 from backend.db.database import db
 from backend.agents import (
@@ -76,6 +77,15 @@ app = FastAPI(
     description="Asynchronous Real-Time Voice Agent with FastAPI, WebSockets, Whisper, and Ollama.",
     version="1.0.0",
     lifespan=lifespan
+)
+
+# Enable CORS for external/remote static hosts
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Resolve dynamic path to frontend directory (cross-platform compatible)
