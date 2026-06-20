@@ -138,7 +138,13 @@ function connectWebSocket() {
     // Determine ws vs wss, local host vs remote
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.port === '5500' ? 'localhost:8000' : (window.location.host || 'localhost:8000');
-    const wsUrl = `${protocol}//${host}/ws/voice?session_id=${sessionID}`;
+    
+    // Read DNI/Router login credentials from URL query parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const loginType = urlParams.get('type') || '';
+    const loginValue = urlParams.get('value') || '';
+    
+    const wsUrl = `${protocol}//${host}/ws/voice?session_id=${sessionID}&login_type=${encodeURIComponent(loginType)}&login_value=${encodeURIComponent(loginValue)}`;
     
     console.log(`Connecting to WebSocket: ${wsUrl}`);
     statusText.textContent = 'Conectando...';
@@ -263,14 +269,56 @@ function renderAgentResponse(data) {
         <div class="msg-bubble">${data.response}</div>
         <div class="msg-meta">
             <span>Miranet VoiceAgent</span>
-            <span class="badge badge-intent">${data.intent}</span>
+            <span class="badge badge-intent" style="text-transform: uppercase;">${data.intent}</span>
             <span class="badge badge-sentiment">${data.sentiment}</span>
         </div>
     `;
     chatLog.appendChild(agentDiv);
     chatLog.scrollTop = chatLog.scrollHeight;
 
-    // 4. Play Text-to-Speech if enabled
+    // 4. Update Client and Incident Report Cards dynamically (HU-01 / HU-06 / HU-10)
+    if (data.client_info) {
+        document.getElementById('val-client-name').textContent = data.client_info.nombre || 'N/A';
+        document.getElementById('val-client-id').textContent = `${data.client_info.dni || 'N/A'} / ${data.client_info.router_sn || 'N/A'}`;
+        document.getElementById('val-client-zone').textContent = data.client_info.zona_nombre || 'N/A';
+        
+        const zoneStatusNode = document.getElementById('val-zone-status');
+        const stateStr = (data.client_info.zona_estado || 'operativo').toUpperCase();
+        zoneStatusNode.textContent = stateStr;
+        
+        if (stateStr === 'FALLA_MASIVA') {
+            zoneStatusNode.style.color = 'var(--danger-color)';
+        } else if (stateStr === 'FALLA_INDIVIDUAL') {
+            zoneStatusNode.style.color = 'var(--warning-color)';
+        } else {
+            zoneStatusNode.style.color = '#10b981'; // Green
+        }
+    }
+
+    if (data.network_status) {
+        const gravityNode = document.getElementById('val-report-gravity');
+        const gravityStr = (data.intent || 'bajo').toUpperCase();
+        gravityNode.textContent = gravityStr;
+        
+        if (gravityStr === 'CRITICO') {
+            gravityNode.style.color = 'var(--danger-color)';
+        } else if (gravityStr === 'ALTO') {
+            gravityNode.style.color = 'var(--warning-color)';
+        } else if (gravityStr === 'MEDIO') {
+            gravityNode.style.color = '#eab308'; // Yellow
+        } else {
+            gravityNode.style.color = '#10b981'; // Green
+        }
+
+        document.getElementById('val-report-diagnosis').textContent = data.diagnostico_causa_raiz || 'Estudio técnico completo';
+        document.getElementById('val-report-confidence').textContent = data.porcentaje_confianza || '95%';
+        
+        const net = data.network_status;
+        document.getElementById('val-equip-metrics').textContent = 
+            `${net.nombre || 'Router'} [CPU: ${net.cpu_usage}%, MEM: ${net.mem_usage}%, LOSS: ${net.packet_loss}%, IF: ${net.interface_status}]`;
+    }
+
+    // 5. Play Text-to-Speech if enabled
     if (ttsToggle.checked && data.response) {
         speakResponse(data.response);
     }
