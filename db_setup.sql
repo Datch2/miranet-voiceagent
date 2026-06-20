@@ -8,10 +8,15 @@ COLLATE utf8mb4_unicode_ci;
 
 USE `miranet_voiceagent`;
 
--- 2. Drop existing tables if you want a clean start (Optional, commented out)
--- DROP TABLE IF EXISTS `network_metrics`;
--- DROP TABLE IF EXISTS `voice_logs`;
--- DROP TABLE IF EXISTS `conversations`;
+-- 2. Drop existing tables in reverse dependency order (to prevent key constraint errors)
+DROP TABLE IF EXISTS `reportes_tecnicos`;
+DROP TABLE IF EXISTS `incidencias`;
+DROP TABLE IF EXISTS `clientes`;
+DROP TABLE IF EXISTS `equipos_red`;
+DROP TABLE IF EXISTS `zonas`;
+DROP TABLE IF EXISTS `network_metrics`;
+DROP TABLE IF EXISTS `voice_logs`;
+DROP TABLE IF EXISTS `conversations`;
 
 -- 3. Create Tables
 CREATE TABLE IF NOT EXISTS `conversations` (
@@ -47,69 +52,81 @@ CREATE TABLE IF NOT EXISTS `network_metrics` (
     FOREIGN KEY (`session_id`) REFERENCES `conversations`(`session_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- 4. Insert Synthetic Data for Testing
--- Insert active sessions
-INSERT INTO `conversations` (`session_id`, `created_at`) VALUES
-('session_diego_001', DATE_SUB(NOW(), INTERVAL 2 HOUR)),
-('session_sergio_002', DATE_SUB(NOW(), INTERVAL 1 HOUR)),
-('session_test_003', DATE_SUB(NOW(), INTERVAL 10 MINUTE))
-ON DUPLICATE KEY UPDATE `session_id` = `session_id`;
+CREATE TABLE IF NOT EXISTS `zonas` (
+    `id` INT PRIMARY KEY,
+    `nombre` VARCHAR(255) UNIQUE NOT NULL,
+    `estado` VARCHAR(255) NOT NULL
+) ENGINE=InnoDB;
 
--- Insert voice logs for Session 1 (Diego - Technical Support)
-INSERT INTO `voice_logs` 
-(`session_id`, `sequence_number`, `audio_size_bytes`, `transcription`, `classification_intent`, `classification_sentiment`, `response_text`, `transcription_latency_ms`, `classification_latency_ms`, `response_latency_ms`, `created_at`)
-VALUES
-('session_diego_001', 1, 64000, 
- 'Hola, buenas tardes. Tengo un problema con el internet de mi oficina, está sumamente lento.', 
- 'soporte_tecnico', 'frustrado', 
- 'Hola, lamento escuchar que tu internet está lento. Para poder ayudarte, ¿me confirmas si estás conectado por cable o por Wi-Fi?', 
- 850, 420, 1100, DATE_SUB(NOW(), INTERVAL 115 MINUTE)),
- 
-('session_diego_001', 2, 48000, 
- 'Estoy conectado directamente por cable de red al módem y aun así demora en cargar todo.', 
- 'soporte_tecnico', 'neutral', 
- 'Entendido. Procederé a realizar una prueba de ping y refresco de señal desde la central hacia tu módem. Demorará unos segundos.', 
- 720, 390, 950, DATE_SUB(NOW(), INTERVAL 114 MINUTE)),
- 
-('session_diego_001', 3, 52000, 
- 'De acuerdo, espero. Avísame cuando termines el reinicio de señal.', 
- 'soporte_tecnico', 'neutral', 
- 'Señal refrescada correctamente. Por favor, verifica si la velocidad ha mejorado. Si persiste la lentitud, agendaremos una visita técnica.', 
- 680, 310, 880, DATE_SUB(NOW(), INTERVAL 113 MINUTE));
+CREATE TABLE IF NOT EXISTS `equipos_red` (
+    `id` INT PRIMARY KEY,
+    `nombre` VARCHAR(255) UNIQUE NOT NULL,
+    `zona_id` INT NOT NULL,
+    `cpu_usage` FLOAT NOT NULL,
+    `mem_usage` FLOAT NOT NULL,
+    `packet_loss` FLOAT NOT NULL,
+    `interface_status` VARCHAR(255) NOT NULL,
+    FOREIGN KEY (`zona_id`) REFERENCES `zonas`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
--- Insert voice logs for Session 2 (Sergio - Billing & Payments Inquiry)
-INSERT INTO `voice_logs` 
-(`session_id`, `sequence_number`, `audio_size_bytes`, `transcription`, `classification_intent`, `classification_sentiment`, `response_text`, `transcription_latency_ms`, `classification_latency_ms`, `response_latency_ms`, `created_at`)
-VALUES
-('session_sergio_002', 1, 80000, 
- 'Hola, quería consultar cuál es mi saldo a pagar este mes y cuándo es mi fecha límite.', 
- 'consulta_saldo', 'neutral', 
- 'Hola Sergio. Tu saldo al día de hoy es de 120 soles y tu fecha límite de pago es el 30 de este mes.', 
- 920, 350, 1020, DATE_SUB(NOW(), INTERVAL 55 MINUTE)),
- 
-('session_sergio_002', 2, 75000, 
- 'Excelente, muchas gracias. ¿Hay algún cargo adicional por pagar fuera de tiempo?', 
- 'consulta_saldo', 'neutral', 
- 'Sí, los pagos tardíos tienen un recargo por mora del cinco por ciento del total del recibo. Te sugerimos realizar el pago antes de la fecha límite.', 
- 890, 380, 1150, DATE_SUB(NOW(), INTERVAL 54 MINUTE));
+CREATE TABLE IF NOT EXISTS `clientes` (
+    `id` INT PRIMARY KEY,
+    `nombre` VARCHAR(255) NOT NULL,
+    `dni` VARCHAR(255) UNIQUE NOT NULL,
+    `router_sn` VARCHAR(255) UNIQUE NOT NULL,
+    `zona_id` INT NOT NULL,
+    FOREIGN KEY (`zona_id`) REFERENCES `zonas`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
--- Insert network metrics for Session 1 (Diego - Bad Connection)
-INSERT INTO `network_metrics`
-(`session_id`, `latency_ms`, `packet_loss_rate`, `jitter_ms`, `bandwidth_kbps`, `recorded_at`)
-VALUES
-('session_diego_001', 120, 0.05, 18, 96.5, DATE_SUB(NOW(), INTERVAL 115 MINUTE)),
-('session_diego_001', 145, 0.08, 22, 64.2, DATE_SUB(NOW(), INTERVAL 114 MINUTE)),
-('session_diego_001', 98, 0.02, 11, 128.0, DATE_SUB(NOW(), INTERVAL 113 MINUTE));
+CREATE TABLE IF NOT EXISTS `incidencias` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `session_id` VARCHAR(255) NOT NULL,
+    `cliente_id` INT NOT NULL,
+    `descripcion` TEXT,
+    `nivel_gravedad` VARCHAR(255),
+    `estado` VARCHAR(255),
+    `creado_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`session_id`) REFERENCES `conversations`(`session_id`) ON DELETE CASCADE,
+    FOREIGN KEY (`cliente_id`) REFERENCES `clientes`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
--- Insert network metrics for Session 2 (Sergio - Stable Connection)
-INSERT INTO `network_metrics`
-(`session_id`, `latency_ms`, `packet_loss_rate`, `jitter_ms`, `bandwidth_kbps`, `recorded_at`)
-VALUES
-('session_sergio_002', 45, 0.00, 3, 256.0, DATE_SUB(NOW(), INTERVAL 55 MINUTE)),
-('session_sergio_002', 48, 0.00, 4, 256.0, DATE_SUB(NOW(), INTERVAL 54 MINUTE));
+CREATE TABLE IF NOT EXISTS `reportes_tecnicos` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `incidencia_id` INT NOT NULL,
+    `diagnostico` TEXT,
+    `confianza` FLOAT,
+    `detalles_tecnicos` TEXT,
+    `creado_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`incidencia_id`) REFERENCES `incidencias`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
--- Insert network metrics for Session 3 (Test Session)
-INSERT INTO `network_metrics`
-(`session_id`, `latency_ms`, `packet_loss_rate`, `jitter_ms`, `bandwidth_kbps`, `recorded_at`)
-VALUES
-('session_test_003', 30, 0.00, 2, 512.0, DATE_SUB(NOW(), INTERVAL 10 MINUTE));
+-- 4. Seed Mock Data
+-- Zonas
+INSERT INTO `zonas` (`id`, `nombre`, `estado`) VALUES
+(1, 'Norte', 'falla_individual'),
+(2, 'Sur', 'operativo'),
+(3, 'Centro', 'falla_masiva'),
+(4, 'Este', 'operativo');
+
+-- Equipos de Red (SNMP Mock)
+INSERT INTO `equipos_red` (`id`, `nombre`, `zona_id`, `cpu_usage`, `mem_usage`, `packet_loss`, `interface_status`) VALUES
+(1, 'Router-Norte-01', 1, 88.0, 75.0, 4.5, 'up'),
+(2, 'Router-Sur-01', 2, 25.0, 40.0, 0.0, 'up'),
+(3, 'Router-Centro-01', 3, 99.0, 95.0, 15.0, 'down'),
+(4, 'Router-Este-01', 4, 30.0, 45.0, 0.0, 'up');
+
+-- Clientes
+INSERT INTO `clientes` (`id`, `nombre`, `dni`, `router_sn`, `zona_id`) VALUES
+(1, 'Diego Torres', '12345678', 'RT000001', 1),
+(2, 'Sergio Perez', '87654321', 'RT000002', 2),
+(3, 'Maria Gomez', '11112222', 'RT000003', 3),
+(4, 'Juan Lopez', '33334444', 'RT000004', 4);
+
+-- 5. Insert Initial Test Conversation, Incident, and Report
+INSERT INTO `conversations` (`session_id`) VALUES ('session_workbench_test');
+
+INSERT INTO `incidencias` (`id`, `session_id`, `cliente_id`, `descripcion`, `nivel_gravedad`, `estado`) VALUES
+(1, 'session_workbench_test', 3, 'Mi router tiene la luz roja y mis vecinos tampoco tienen internet', 'critico', 'diagnosticando');
+
+INSERT INTO `reportes_tecnicos` (`id`, `incidencia_id`, `diagnostico`, `confianza`, `detalles_tecnicos`) VALUES
+(1, 1, 'Avería Masiva en Zona Centro: Router-Centro-01 con interfaz DOWN y 15% packet loss', 99.0, '{"zona": "Centro", "equipo": "Router-Centro-01", "interface": "down"}');
