@@ -3,6 +3,9 @@ import pathlib
 import uuid
 import json
 import logging
+import time
+import os
+import psutil
 from contextlib import asynccontextmanager
 
 # Resolve and add parent directory to system path for clean imports of 'backend' package
@@ -203,11 +206,34 @@ async def websocket_voice_endpoint(
                     cmd_type = control.get("type")
                     
                     if cmd_type == "end_of_speech":
+                        tiempo_inicio = time.time()
                         logger.info(f"Client declared end of speech for {session_id}. Processing segment...")
                         
+                        # Determine audio duration in seconds
+                        duracion_audio = control.get("duracion_audio")
+                        if duracion_audio is None:
+                            session = orchestrator.active_sessions.get(session_id)
+                            if session and "audio_buffer" in session:
+                                # PCM 16-bit 16kHz mono audio (2 bytes per sample, 16000 samples/sec -> 32000 bytes/sec)
+                                duracion_audio = len(session["audio_buffer"]) / 32000.0
+                            else:
+                                duracion_audio = 1.0
+                        else:
+                            try:
+                                duracion_audio = float(duracion_audio)
+                            except (ValueError, TypeError):
+                                duracion_audio = 1.0
+                        if duracion_audio <= 0:
+                            duracion_audio = 1.0
+
                         # Process the accumulated audio buffer
                         result = await orchestrator.process_audio_segment(session_id)
                         
+                        # Calculate response metrics
+                        tiempo_total = time.time() - tiempo_inicio
+                        rtf_calculado = tiempo_total / duracion_audio
+                        memoria_ram = psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
+
                         # Send result back to the user
                         await websocket.send_json({
                             "type": "agent_response",
@@ -215,16 +241,45 @@ async def websocket_voice_endpoint(
                             "response": result["response"],
                             "intent": result["intent"],
                             "sentiment": result["sentiment"],
-                            "latencies": result["latencies"]
+                            "latencies": result["latencies"],
+                            "client_info": result.get("client_info"),
+                            "network_status": result.get("network_status"),
+                            "diagnostico_causa_raiz": result.get("diagnostico_causa_raiz"),
+                            "porcentaje_confianza": result.get("porcentaje_confianza"),
+                            "metricas_agente": {
+                                "latencia_p95_ms": tiempo_total * 1000,
+                                "rtf": rtf_calculado,
+                                "ram_consumo_mb": memoria_ram
+                            }
                         })
                         
                     elif cmd_type == "user_transcription":
+                        tiempo_inicio = time.time()
                         transcription_text = control.get("text", "").strip()
                         logger.info(f"Client sent direct transcription for {session_id}: '{transcription_text}'")
                         
+                        # Determine audio duration in seconds
+                        duracion_audio = control.get("duracion_audio")
+                        if duracion_audio is None:
+                            # Estimate duration based on text length (e.g. typical speech rate: 150 words per minute / 2.5 words per second)
+                            words_count = len(transcription_text.split())
+                            duracion_audio = max(1.0, words_count / 2.5)
+                        else:
+                            try:
+                                duracion_audio = float(duracion_audio)
+                            except (ValueError, TypeError):
+                                duracion_audio = 1.0
+                        if duracion_audio <= 0:
+                            duracion_audio = 1.0
+
                         # Process using the direct text route
                         result = await orchestrator.process_text_segment(session_id, transcription_text)
                         
+                        # Calculate response metrics
+                        tiempo_total = time.time() - tiempo_inicio
+                        rtf_calculado = tiempo_total / duracion_audio
+                        memoria_ram = psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
+
                         # Send result back to the user
                         await websocket.send_json({
                             "type": "agent_response",
@@ -232,7 +287,16 @@ async def websocket_voice_endpoint(
                             "response": result["response"],
                             "intent": result["intent"],
                             "sentiment": result["sentiment"],
-                            "latencies": result["latencies"]
+                            "latencies": result["latencies"],
+                            "client_info": result.get("client_info"),
+                            "network_status": result.get("network_status"),
+                            "diagnostico_causa_raiz": result.get("diagnostico_causa_raiz"),
+                            "porcentaje_confianza": result.get("porcentaje_confianza"),
+                            "metricas_agente": {
+                                "latencia_p95_ms": tiempo_total * 1000,
+                                "rtf": rtf_calculado,
+                                "ram_consumo_mb": memoria_ram
+                            }
                         })
                         
                     elif cmd_type == "reset":

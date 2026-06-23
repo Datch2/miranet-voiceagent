@@ -12,3 +12,5 @@ python-dotenv>=1.0.0
 aiofiles>=23.1.0
 supabase>=2.0.0
 SpeechRecognition
+psutil>=5.9.0
+
