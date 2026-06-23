@@ -1,3 +1,7 @@
+const TUNNEL_URL = "URL_TEMPORAL_DEL_TUNEL";
+const API_URL = `${TUNNEL_URL}/api/v1/cliente/buscar`;
+const WS_URL = `${TUNNEL_URL.replace("https://", "wss://")}/ws`;
+
 // WebSocket & Audio State Variables
 let socket = null;
 let audioContext = null;
@@ -135,22 +139,13 @@ function resizeCanvas() {
 // WebSocket Connections & Message Handlers
 // ----------------------------------------------------
 function connectWebSocket() {
-    // Determine ws protocol and host (supports local running and GitHub Pages with local backend)
-    let wsProtocol = 'ws:';
-    let host = 'localhost:8000';
-    
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    if (isLocalhost && window.location.port !== '5500') {
-        wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        host = window.location.host;
-    }
-    
     // Read DNI/Router login credentials from URL query parameters
     const urlParams = new URLSearchParams(window.location.search);
     const loginType = urlParams.get('type') || '';
     const loginValue = urlParams.get('value') || '';
     
-    const wsUrl = `${wsProtocol}//${host}/ws/voice?session_id=${sessionID}&login_type=${encodeURIComponent(loginType)}&login_value=${encodeURIComponent(loginValue)}`;
+    // Construct WebSocket URL dynamically from WS_URL constant
+    const wsUrl = `${WS_URL}?session_id=${sessionID}&login_type=${encodeURIComponent(loginType)}&login_value=${encodeURIComponent(loginValue)}`;
     
     console.log(`Connecting to WebSocket: ${wsUrl}`);
     statusText.textContent = 'Conectando...';
@@ -215,16 +210,9 @@ function connectWebSocket() {
 
 async function fetchServerHealth() {
     try {
-        let apiProtocol = 'http:';
-        let host = 'localhost:8000';
-        
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        if (isLocalhost && window.location.port !== '5500') {
-            apiProtocol = window.location.protocol;
-            host = window.location.host;
-        }
-        
-        const response = await fetch(`${apiProtocol}//${host}/health`);
+        // Query the server health status dynamically from API_URL by replacing the path
+        const healthUrl = API_URL.replace('/api/v1/cliente/buscar', '/health');
+        const response = await fetch(healthUrl);
         const info = await response.json();
         
         if (info.status === 'online') {

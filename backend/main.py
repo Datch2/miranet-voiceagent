@@ -139,6 +139,7 @@ async def health_check():
         status_code=200
     )
 
+@app.websocket("/ws")
 @app.websocket("/ws/voice")
 async def websocket_voice_endpoint(
     websocket: WebSocket,
