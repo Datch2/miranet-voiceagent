@@ -1,4 +1,4 @@
-const TUNNEL_URL = "URL_TEMPORAL_DEL_TUNEL";
+const TUNNEL_URL = "https://ashes-twiddling-esquire.ngrok-free.dev";
 const API_URL = `${TUNNEL_URL}/api/v1/cliente/buscar`;
 const WS_URL = `${TUNNEL_URL.replace("https://", "wss://")}/ws`;
 
