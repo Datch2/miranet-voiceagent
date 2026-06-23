@@ -3,12 +3,25 @@ import re
 import sys
 import os
 import time
+from pyngrok import ngrok
+from dotenv import load_dotenv
 
 def main():
     print("=================================================================")
-    print("     Miranet VoiceAgent - Inicio Automático de Túnel Local      ")
+    print("     Miranet VoiceAgent - Inicio Automático de Túnel Ngrok      ")
     print("=================================================================")
     
+    # Cargar variables de entorno
+    load_dotenv(dotenv_path=".env")
+    authtoken = os.getenv("NGROK_AUTHTOKEN", "").strip()
+    
+    if authtoken:
+        print("🔑 Token de autenticación de ngrok cargado desde .env.")
+        ngrok.set_auth_token(authtoken)
+    else:
+        print("⚠️ Advertencia: No se encontró NGROK_AUTHTOKEN configurado en el archivo .env.")
+        print("Si ngrok requiere autenticación, por favor edita tu archivo .env y coloca tu token.")
+
     # 1. Iniciar el servidor backend FastAPI
     print("\n[1/4] Iniciando servidor FastAPI local en puerto 8000...")
     backend_proc = subprocess.Popen(
@@ -27,52 +40,24 @@ def main():
         return
     print("✅ Servidor backend corriendo localmente en el puerto 8000.")
 
-    # 2. Iniciar el túnel público usando localtunnel
-    print("\n[2/4] Creando túnel de red pública con localtunnel (npx localtunnel)...")
+    # 2. Iniciar el túnel público usando pyngrok
+    print("\n[2/4] Creando túnel de red pública con ngrok...")
     try:
-        # En Windows npx se ejecuta como npx.cmd
-        npx_cmd = "npx.cmd" if os.name == "nt" else "npx"
-        tunnel_proc = subprocess.Popen(
-            [npx_cmd, "localtunnel", "--port", "8000"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
-        )
-    except FileNotFoundError:
-        print("❌ Error: No se encontró 'npx' o 'Node.js' instalado.")
-        print("Por favor, asegúrate de tener Node.js instalado en tu máquina para usar 'npx'.")
+        # Conectar el túnel de ngrok en el puerto 8000
+        tunnel = ngrok.connect(8000)
+        url = tunnel.public_url
+    except Exception as e:
+        print(f"❌ Error al crear el túnel de ngrok: {e}")
+        print("\nPara solucionar esto:")
+        print("1. Regístrate gratis en https://dashboard.ngrok.com/")
+        print("2. Copia tu Auth Token de la consola de ngrok.")
+        print("3. Agrégalo a tu archivo .env en la línea: NGROK_AUTHTOKEN=tu_token_aqui")
         backend_proc.terminate()
-        return
-
-    # 3. Leer la salida del túnel para extraer la URL pública
-    url = None
-    print("⏳ Esperando respuesta del servidor de túneles...")
-    
-    # Leemos la salida de localtunnel línea por línea
-    start_time = time.time()
-    while time.time() - start_time < 15:  # Tiempo de espera máximo de 15 segundos
-        line = tunnel_proc.stdout.readline()
-        if not line:
-            break
-        line_str = line.strip()
-        print(f"   > {line_str}")
-        
-        # Buscar el patrón "your url is: https://..."
-        match = re.search(r"your url is:\s*(https?://[^\s]+)", line_str)
-        if match:
-            url = match.group(1)
-            break
-
-    if not url:
-        print("❌ Error: No se pudo obtener la URL pública de localtunnel.")
-        backend_proc.terminate()
-        tunnel_proc.terminate()
         return
 
     print(f"✅ ¡Túnel creado con éxito!: {url}")
 
-    # 4. Actualizar dinámicamente frontend/index.js con la nueva URL
+    # 3. Actualizar dinámicamente frontend/index.js con la nueva URL
     js_path = os.path.join("frontend", "index.js")
     print(f"\n[3/4] Actualizando constante en '{js_path}'...")
     try:
@@ -93,7 +78,7 @@ def main():
     except Exception as e:
         print(f"❌ Error al escribir en el archivo JavaScript: {e}")
 
-    # 5. Mostrar instrucciones finales
+    # 4. Mostrar instrucciones finales
     print("\n=================================================================")
     print("                     🏁 INSTRUCCIONES FINALES                     ")
     print("=================================================================")
@@ -112,7 +97,11 @@ def main():
     except KeyboardInterrupt:
         print("\n[4/4] Apagando el servidor local y cerrando el túnel...")
         backend_proc.terminate()
-        tunnel_proc.terminate()
+        try:
+            ngrok.disconnect(tunnel.public_url)
+            ngrok.kill()
+        except Exception:
+            pass
         print("👋 Todos los procesos finalizados correctamente.")
 
 if __name__ == "__main__":
