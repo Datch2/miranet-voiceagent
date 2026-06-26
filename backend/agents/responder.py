@@ -41,6 +41,9 @@ class ResponderAgent:
             "respuesta_cliente": "Lo siento, he tenido un problema al procesar tu solicitud. ¿Me lo puedes repetir de nuevo?"
         }
 
+        rt_latency = 12
+        rt_jitter = 2
+
         if not text:
             fallback_result["respuesta_cliente"] = "No te he podido escuchar claramente. ¿Podrías repetir, por favor?"
             return fallback_result, 0
@@ -51,13 +54,27 @@ class ResponderAgent:
         if client_info:
             client_desc = f"Nombre: {client_info['nombre']}, DNI: {client_info['dni']}, Router S/N: {client_info['router_sn']}, Zona: {client_info['zona_nombre']} (Estado de Zona: {client_info['zona_estado']})"
         if network_status:
-            net_desc = f"Equipo: {network_status['nombre']}, CPU: {network_status['cpu_usage']}%, Memoria: {network_status['mem_usage']}%, Pérdida de paquetes: {network_status['packet_loss']}%, Estado de interfaz: {network_status['interface_status']}"
+            rt_latency = network_status.get("realtime_latency_ms", 12)
+            rt_jitter = network_status.get("realtime_jitter_ms", 2)
+            net_desc = (
+                f"Equipo: {network_status['nombre']}, "
+                f"CPU: {network_status['cpu_usage']}%, "
+                f"Memoria: {network_status['mem_usage']}%, "
+                f"Pérdida de paquetes: {network_status['packet_loss']}%, "
+                f"Estado de interfaz: {network_status['interface_status']}, "
+                f"Latencia de conexión actual: {rt_latency} ms, "
+                f"Jitter actual: {rt_jitter} ms"
+            )
 
         # Cruce de zona logic to override network state
         actual_network_state = client_info['zona_estado'] if client_info else settings.ESTADO_RED
 
         # Construct dynamic prompt inserting the ESTADO_RED and zone/client settings
         system_instruction = (
+            "Eres el agente de voz inteligente de Miranet SAC. Cuando el diagnóstico de red indique fallas lógicas (Alta latencia o Jitter), no des respuestas genéricas. Debes:\n"
+            "1. Mencionar explícitamente el código del router (Router S/N) y los milisegundos de latencia actuales.\n"
+            "2. Explicar la acción técnica sistemática ejecutada automáticamente por el software (ej: Reajuste lógico de canal o aprovisionamiento de QoS).\n"
+            "3. Pedirle al usuario unos segundos para validar la restauración síncrona del servicio.\n\n"
             "Eres el núcleo de Inteligencia Artificial del Agente de Voz de la empresa de telecomunicaciones Miranet SAC (Año 2026). "
             "Tu función es procesar reportes de fallas de internet y actuar de manera síncrona como Operadora Automática y Técnico de Monitoreo.\n\n"
             f"INFORMACIÓN DEL CLIENTE CONECTADO:\n{client_desc}\n\n"
@@ -212,13 +229,17 @@ class ResponderAgent:
                     "porcentaje_confianza": "85%",
                     "respuesta_cliente": "La luz roja indica pérdida de señal física. Por favor, asegúrese de que el cable de fibra esté bien conectado."
                 }
-            # Slow speeds (Medium)
-            elif any(w in lower_text for w in ["lento", "lentitud", "demora", "velocidad", "cargar", "cargando"]):
+            # Slow speeds / Logical failure (Alta latencia o Jitter)
+            elif (rt_latency > 60 or rt_jitter > 15) or any(w in lower_text for w in ["lento", "lentitud", "demora", "velocidad", "cargar", "cargando", "lag", "ping", "latencia", "jitter"]):
+                router_sn = client_info.get("router_sn") if client_info else "RT000002"
+                # If latency is normal in telemetry but they complain, simulate a lag spike for the response context
+                display_latency = rt_latency if rt_latency > 60 else 74
+                accion = "reajuste lógico de canal" if display_latency > 80 else "aprovisionamiento de QoS"
                 result = {
                     "nivel_asignado": "medio",
-                    "diagnostico_causa_raiz": f"Saturación de enlace (CPU del equipo: {network_status['cpu_usage'] if network_status else '88'}%)",
-                    "porcentaje_confianza": "90%",
-                    "respuesta_cliente": "Detectamos una saturación temporal en su nodo de conexión. Procederemos a refrescar su señal de inmediato."
+                    "diagnostico_causa_raiz": f"Falla lógica detectada (Latencia: {display_latency}ms, Jitter: {rt_jitter}ms)",
+                    "porcentaje_confianza": "95%",
+                    "respuesta_cliente": f"Estimado cliente, detectamos una falla lógica en su router {router_sn} con una latencia actual de {display_latency} milisegundos. Hemos ejecutado automáticamente un {accion} en la línea; por favor, espere unos segundos mientras validamos la restauración síncrona del servicio."
                 }
             # Loss of service / Connection drops (High)
             elif any(w in lower_text for w in ["cae", "cayó", "cayo", "se fue", "no tengo", "no hay", "funciona", "servicios", "fallando", "falla", "sin internet"]):

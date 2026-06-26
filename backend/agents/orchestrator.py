@@ -142,11 +142,25 @@ class OrchestratorAgent:
         client_info = session.get("client_info")
         network_status = session.get("network_status")
         
+        # Enrich network_status with real-time connection telemetry from network_monitor
+        net_monitor = session["network_monitor"]
+        rt_latency = 12
+        if net_monitor.packet_intervals:
+            rt_latency = int(sum(net_monitor.packet_intervals) / len(net_monitor.packet_intervals))
+        
+        rt_jitter = 2
+        if len(net_monitor.packet_intervals) > 1:
+            rt_jitter = int(abs(net_monitor.packet_intervals[-1] - net_monitor.packet_intervals[-2]))
+            
+        enriched_network_status = dict(network_status) if network_status else {}
+        enriched_network_status["realtime_latency_ms"] = rt_latency
+        enriched_network_status["realtime_jitter_ms"] = rt_jitter
+
         result_json, r_latency = await self.responder.generate_response(
             text=transcription,
             history=session["history"],
             client_info=client_info,
-            network_status=network_status
+            network_status=enriched_network_status
         )
         
         intent = result_json.get("nivel_asignado", "bajo")
@@ -254,11 +268,25 @@ class OrchestratorAgent:
         client_info = session.get("client_info")
         network_status = session.get("network_status")
         
+        # Enrich network_status with real-time connection telemetry from network_monitor
+        net_monitor = session["network_monitor"]
+        rt_latency = 12
+        if net_monitor.packet_intervals:
+            rt_latency = int(sum(net_monitor.packet_intervals) / len(net_monitor.packet_intervals))
+        
+        rt_jitter = 2
+        if len(net_monitor.packet_intervals) > 1:
+            rt_jitter = int(abs(net_monitor.packet_intervals[-1] - net_monitor.packet_intervals[-2]))
+            
+        enriched_network_status = dict(network_status) if network_status else {}
+        enriched_network_status["realtime_latency_ms"] = rt_latency
+        enriched_network_status["realtime_jitter_ms"] = rt_jitter
+
         result_json, r_latency = await self.responder.generate_response(
             text=transcription,
             history=session["history"],
             client_info=client_info,
-            network_status=network_status
+            network_status=enriched_network_status
         )
         
         intent = result_json.get("nivel_asignado", "bajo")
