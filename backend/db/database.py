@@ -11,13 +11,16 @@ logger = logging.getLogger("Database")
 
 class DatabaseManager:
     def __init__(self):
+        self.pool_negocio: aiomysql.Pool | None = None
+        self.pool_telemetria: aiomysql.Pool | None = None
         self.pool: aiomysql.Pool | None = None
         self.use_sqlite = False
         self.use_supabase = False
         self.supabase_client = None
-        self.sqlite_path = Path(__file__).resolve().parent / "voiceagent.db"
+        self.sqlite_path = Path(__file__).resolve().parent / "miranet_db.db"
+        self.sqlite_path_telemetria = Path(__file__).resolve().parent / "cacti.db"
 
-    async def ensure_mysql_db_exists(self):
+    async def ensure_mysql_db_exists(self, db_name: str):
         """Connect to MySQL and create the database if it doesn't exist."""
         conn = await aiomysql.connect(
             host=settings.DB_HOST,
@@ -29,9 +32,9 @@ class DatabaseManager:
         try:
             async with conn.cursor() as cur:
                 # Sanitized DB name creation
-                db_name = settings.DB_NAME.replace("`", "")
-                await cur.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`;")
-            logger.info(f"MySQL database `{db_name}` checked/created.")
+                sanitized_name = db_name.replace("`", "")
+                await cur.execute(f"CREATE DATABASE IF NOT EXISTS `{sanitized_name}`;")
+            logger.info(f"MySQL database `{sanitized_name}` checked/created.")
         finally:
             conn.close()
 
@@ -48,13 +51,12 @@ class DatabaseManager:
             except Exception as se_err:
                 logger.error(f"Failed to initialize Supabase Client: {se_err}. Falling back to local databases...")
 
+        # 1. Connect to miranet_db (negocio)
         try:
-            logger.info(f"Attempting to connect to MySQL at {settings.DB_HOST}:{settings.DB_PORT}...")
-            # 1. Create database if it does not exist
-            await self.ensure_mysql_db_exists()
+            logger.info(f"Attempting to connect to MySQL miranet_db at {settings.DB_HOST}:{settings.DB_PORT}...")
+            await self.ensure_mysql_db_exists(settings.DB_NAME)
             
-            # 2. Establish connection pool
-            self.pool = await aiomysql.create_pool(
+            self.pool_negocio = await aiomysql.create_pool(
                 host=settings.DB_HOST,
                 port=settings.DB_PORT,
                 user=settings.DB_USER,
@@ -64,27 +66,62 @@ class DatabaseManager:
                 minsize=1,
                 maxsize=10
             )
-            logger.info("MySQL database connection pool established.")
-            await self.init_tables()
+            self.pool = self.pool_negocio
+            logger.info("MySQL miranet_db connection pool established.")
         except Exception as my_err:
             logger.warning(
-                f"Failed to connect to MySQL: {my_err}. "
+                f"Failed to connect to MySQL miranet_db: {my_err}. "
                 f"Initializing SQLite fallback database at: {self.sqlite_path}"
             )
+            self.pool_negocio = None
             self.pool = None
             self.use_sqlite = True
-            await self.init_tables()
+
+        # 2. Connect to cacti (telemetria)
+        try:
+            logger.info(f"Attempting to connect to MySQL cacti at {settings.DB_HOST}:{settings.DB_PORT}...")
+            await self.ensure_mysql_db_exists(settings.DB_NAME_TELEMETRIA)
+            
+            self.pool_telemetria = await aiomysql.create_pool(
+                host=settings.DB_HOST,
+                port=settings.DB_PORT,
+                user=settings.DB_USER,
+                password=settings.DB_PASSWORD,
+                db=settings.DB_NAME_TELEMETRIA,
+                autocommit=True,
+                minsize=1,
+                maxsize=10
+            )
+            logger.info("MySQL cacti connection pool established.")
+        except Exception as my_err:
+            logger.warning(
+                f"Failed to connect to MySQL cacti: {my_err}. "
+                f"Initializing SQLite fallback database at: {self.sqlite_path_telemetria}"
+            )
+            self.pool_telemetria = None
+            self.use_sqlite = True
+
+        await self.init_tables()
 
     async def disconnect(self):
-        """Close connection resources."""
+        """Close connection resources for both pools."""
         if self.use_supabase:
             logger.info("Supabase client active, no connection pool to close.")
-        elif self.pool:
-            logger.info("Closing MySQL connection pool...")
-            self.pool.close()
-            await self.pool.wait_closed()
-            logger.info("MySQL connection pool closed.")
-        elif self.use_sqlite:
+            return
+
+        if self.pool_negocio:
+            logger.info("Closing MySQL miranet_db connection pool...")
+            self.pool_negocio.close()
+            await self.pool_negocio.wait_closed()
+            logger.info("MySQL miranet_db connection pool closed.")
+
+        if self.pool_telemetria:
+            logger.info("Closing MySQL cacti connection pool...")
+            self.pool_telemetria.close()
+            await self.pool_telemetria.wait_closed()
+            logger.info("MySQL cacti connection pool closed.")
+
+        if self.use_sqlite:
             logger.info("SQLite connection closed (auto-handled per transaction).")
 
     async def init_tables(self):
@@ -191,7 +228,23 @@ class DatabaseManager:
                         await cur.execute(query)
                     for seed in seed_queries:
                         await cur.execute(seed)
-            logger.info("MySQL tables checked, created, and seeded.")
+            logger.info("MySQL miranet_db tables checked, created, and seeded.")
+
+            if self.pool_telemetria:
+                try:
+                    async with self.pool_telemetria.acquire() as conn:
+                        async with conn.cursor() as cur:
+                            await cur.execute("""
+                            CREATE TABLE IF NOT EXISTS telemetria_snmp (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                router_id VARCHAR(255) NOT NULL,
+                                latencia FLOAT NOT NULL,
+                                recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            ) ENGINE=InnoDB;
+                            """)
+                    logger.info("MySQL cacti telemetria_snmp table checked/created.")
+                except Exception as cacti_err:
+                    logger.error(f"Failed to initialize telemetria_snmp table in MySQL cacti: {cacti_err}")
         else:
             # SQLite Schema
             queries = [
@@ -290,6 +343,7 @@ class DatabaseManager:
             ]
             
             def _create_sqlite_tables():
+                # 1. Initialize business db
                 conn = sqlite3.connect(self.sqlite_path)
                 try:
                     conn.execute("PRAGMA foreign_keys = ON;")
@@ -301,9 +355,25 @@ class DatabaseManager:
                     conn.commit()
                 finally:
                     conn.close()
+                
+                # 2. Initialize telemetry db
+                conn_tel = sqlite3.connect(self.sqlite_path_telemetria)
+                try:
+                    cursor_tel = conn_tel.cursor()
+                    cursor_tel.execute("""
+                    CREATE TABLE IF NOT EXISTS telemetria_snmp (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        router_id TEXT NOT NULL,
+                        latencia REAL NOT NULL,
+                        recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    );
+                    """)
+                    conn_tel.commit()
+                finally:
+                    conn_tel.close()
 
             await asyncio.to_thread(_create_sqlite_tables)
-            logger.info("SQLite tables checked, created, and seeded successfully.")
+            logger.info("SQLite fallback databases (miranet_db & cacti) checked, created, and seeded successfully.")
 
     async def create_conversation(self, session_id: str) -> bool:
         """Insert a new conversation session."""
@@ -596,6 +666,47 @@ class DatabaseManager:
             except Exception as e:
                 logger.error(f"MySQL create_incident_and_report error: {e}")
                 return None
+
+    async def registrar_evento_infraestructura(self, router_id: str, latencia: float) -> bool:
+        """
+        Inserta un evento de telemetría SNMP en la base de datos de infraestructura (cacti).
+        """
+        if self.pool_telemetria:
+            # Use MySQL pool_telemetria
+            query = """
+            INSERT INTO telemetria_snmp (router_id, latencia)
+            VALUES (%s, %s);
+            """
+            params = (router_id, latencia)
+            try:
+                async with self.pool_telemetria.acquire() as conn:
+                    async with conn.cursor() as cur:
+                        await cur.execute(query, params)
+                logger.info(f"Telemetry event logged to MySQL cacti: router={router_id}, latency={latencia}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to log telemetry event to MySQL cacti: {e}")
+                return False
+        else:
+            # Fallback to SQLite cacti.db
+            query = """
+            INSERT INTO telemetria_snmp (router_id, latencia)
+            VALUES (?, ?);
+            """
+            params = (router_id, latencia)
+            def _insert_sqlite():
+                conn = sqlite3.connect(self.sqlite_path_telemetria)
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(query, params)
+                    conn.commit()
+                    return True
+                except Exception as e:
+                    logger.error(f"Failed to log telemetry event to SQLite cacti.db: {e}")
+                    return False
+                finally:
+                    conn.close()
+            return await asyncio.to_thread(_insert_sqlite)
 
     async def _execute(self, query: str, params: tuple) -> bool:
         """Helper to run DB updates on MySQL or SQLite."""

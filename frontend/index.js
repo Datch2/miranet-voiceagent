@@ -218,11 +218,38 @@ async function fetchServerHealth() {
         if (info.status === 'online') {
             metaWhisper.textContent = info.config.whisper_model;
             metaOllama.textContent = info.config.ollama_model;
-            metaDB.textContent = info.database === 'healthy' ? 'Conectado' : 'Sin Persistencia';
-            metaDB.style.color = info.database === 'healthy' ? 'var(--success-color)' : 'var(--warning-color)';
+        }
+
+        // Query both databases connection statuses
+        const statusUrl = API_URL.replace('/api/v1/cliente/buscar', '/api/v1/sistema/status');
+        const statusResponse = await fetch(statusUrl);
+        const statusInfo = await statusResponse.json();
+
+        if (statusInfo.status === 'online') {
+            const hasNegocio = statusInfo.database_negocio.startsWith("conectado");
+            const hasTelemetria = statusInfo.database_telemetria.startsWith("conectado");
+            
+            if (hasNegocio && hasTelemetria) {
+                metaDB.textContent = "Negocio y Telemetría Conectados (3307)";
+                metaDB.style.color = "var(--success-color)";
+            } else if (hasNegocio) {
+                metaDB.textContent = "Solo Negocio Conectado";
+                metaDB.style.color = "var(--warning-color)";
+            } else if (hasTelemetria) {
+                metaDB.textContent = "Solo Telemetría Conectada";
+                metaDB.style.color = "var(--warning-color)";
+            } else {
+                metaDB.textContent = "Desconectado";
+                metaDB.style.color = "var(--danger-color)";
+            }
+        } else {
+            metaDB.textContent = "Desconectado";
+            metaDB.style.color = "var(--danger-color)";
         }
     } catch (e) {
         console.error('Failed to retrieve server configurations:', e);
+        metaDB.textContent = "Error Conexión";
+        metaDB.style.color = "var(--danger-color)";
     }
 }
 

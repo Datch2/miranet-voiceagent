@@ -142,6 +142,94 @@ async def health_check():
         status_code=200
     )
 
+@app.get("/api/v1/cliente/buscar", tags=["Cliente"])
+async def buscar_cliente(type: str, value: str):
+    """
+    Endpoint to validate customer identity (by DNI or Router SN)
+    strictly against the business database.
+    """
+    logger.info(f"Client lookup requested: type={type}, value={value}")
+    try:
+        client = await db.get_client_by_identifier(type, value)
+        if client:
+            return JSONResponse(
+                content={
+                    "status": "found",
+                    "client": client
+                },
+                status_code=200
+            )
+        else:
+            return JSONResponse(
+                content={
+                    "status": "not_found",
+                    "message": "Client not found in business records."
+                },
+                status_code=404
+            )
+    except Exception as e:
+        logger.error(f"Error searching client: {e}", exc_info=True)
+        return JSONResponse(
+            content={
+                "status": "error",
+                "message": "Internal server database error."
+            },
+            status_code=500
+        )
+
+@app.get("/api/v1/sistema/status", tags=["System"])
+async def system_status():
+    """
+    Diagnostic endpoint to verify both business and telemetry connections.
+    """
+    negocio_status = "conectado (port 3307)" if (db.pool_negocio or db.use_sqlite) else "desconectado"
+    telemetria_status = "conectado (port 3307)" if (db.pool_telemetria or db.use_sqlite) else "desconectado"
+
+    return JSONResponse(
+        content={
+            "status": "online",
+            "database_negocio": negocio_status,
+            "database_telemetria": telemetria_status
+        },
+        status_code=200
+    )
+
+@app.get("/api/v1/sistema/telemetria", tags=["System"])
+async def obtener_telemetria():
+    """
+    Retrieves all SNMP telemetry events logged in the Cacti database.
+    """
+    if db.pool_telemetria:
+        try:
+            async with db.pool_telemetria.acquire() as conn:
+                async with conn.cursor(aiomysql.DictCursor) as cur:
+                    await cur.execute("SELECT id, router_id, latencia, recorded_at FROM telemetria_snmp ORDER BY id DESC;")
+                    rows = await cur.fetchall()
+                    for r in rows:
+                        r["recorded_at"] = r["recorded_at"].isoformat()
+                    return JSONResponse(content=rows, status_code=200)
+        except Exception as e:
+            logger.error(f"Error fetching telemetry from MySQL cacti: {e}")
+            return JSONResponse(content={"error": str(e)}, status_code=500)
+    elif db.use_sqlite:
+        import sqlite3
+        def _fetch():
+            conn = sqlite3.connect(db.sqlite_path_telemetria)
+            try:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute("SELECT id, router_id, latencia, recorded_at FROM telemetria_snmp ORDER BY id DESC;")
+                return [dict(row) for row in cursor.fetchall()]
+            finally:
+                conn.close()
+        try:
+            rows = await asyncio.to_thread(_fetch)
+            return JSONResponse(content=rows, status_code=200)
+        except Exception as e:
+            return JSONResponse(content={"error": str(e)}, status_code=500)
+    else:
+        return JSONResponse(content=[], status_code=200)
+
 @app.websocket("/ws")
 @app.websocket("/ws/voice")
 async def websocket_voice_endpoint(

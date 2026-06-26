@@ -9,10 +9,12 @@ load_dotenv(dotenv_path=ROOT_DIR / ".env")
 class Config:
     # MySQL Database Config
     DB_HOST: str = os.getenv("DB_HOST", "localhost")
-    DB_PORT: int = int(os.getenv("DB_PORT", "3306"))
+    DB_PORT: int = int(os.getenv("DB_PORT", "3307"))
     DB_USER: str = os.getenv("DB_USER", "root")
-    DB_PASSWORD: str = os.getenv("DB_PASSWORD", "root")
-    DB_NAME: str = os.getenv("DB_NAME", "miranet_voiceagent")
+    DB_PASSWORD: str = os.getenv("DB_PASSWORD", "")
+    DB_NAME: str = os.getenv("DB_NAME", "miranet_db")
+    DB_NAME_TELEMETRIA: str = os.getenv("DB_NAME_TELEMETRIA", "cacti")
+
 
     # Supabase Official SDK settings
     SUPABASE_URL: str | None = os.getenv("SUPABASE_URL")

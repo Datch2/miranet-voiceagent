@@ -482,22 +482,36 @@
 
             if (!isValid) return;
 
-            // Trigger loading state for 2 seconds
+            // Trigger loading state
             btnSubmit.disabled = true;
             btnSpinner.style.display = 'block';
             btnText.textContent = 'Verificando...';
 
             console.log(`[Miranet Authentication] Initiating connection verification callback...`, payload);
 
-            setTimeout(() => {
-                // Restore original state, log success, and redirect to agent dashboard
-                btnSubmit.disabled = false;
-                btnSpinner.style.display = 'none';
-                btnText.textContent = 'Verificar Conexión';
-                
-                console.log(`[Miranet Authentication] Successful simulation verify response. Redirecting to agent.html...`, payload);
-                window.location.href = `agent.html?type=${encodeURIComponent(payload.type)}&value=${encodeURIComponent(payload.value)}`;
-            }, 2000);
+            // Real fetch lookup against the business database
+            fetch(`/api/v1/cliente/buscar?type=${encodeURIComponent(payload.type)}&value=${encodeURIComponent(payload.value)}`)
+                .then(response => {
+                    btnSubmit.disabled = false;
+                    btnSpinner.style.display = 'none';
+                    btnText.textContent = 'Verificar Conexión';
+                    
+                    if (response.ok) {
+                        return response.json();
+                    } else if (response.status === 404) {
+                        throw new Error("El abonado no existe en los registros de Miranet.");
+                    } else {
+                        throw new Error("Error en el servidor de autenticación.");
+                    }
+                })
+                .then(data => {
+                    console.log(`[Miranet Authentication] Successful lookup response:`, data);
+                    window.location.href = `agent.html?type=${encodeURIComponent(payload.type)}&value=${encodeURIComponent(payload.value)}`;
+                })
+                .catch(err => {
+                    console.error("[Miranet Authentication] Error:", err);
+                    alert(err.message || "Error al conectar con el servidor.");
+                });
         }
     </script>
 </body>
