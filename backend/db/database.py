@@ -242,9 +242,21 @@ class DatabaseManager:
                                 recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                             ) ENGINE=InnoDB;
                             """)
-                    logger.info("MySQL cacti telemetria_snmp table checked/created.")
+                            await cur.execute("""
+                            CREATE TABLE IF NOT EXISTS log_incidencias (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                router_id VARCHAR(50) NOT NULL,
+                                tipo_incidencia VARCHAR(100) NOT NULL,
+                                valor_capturado DOUBLE NOT NULL,
+                                metrica_eficiencia VARCHAR(100) NOT NULL,
+                                solucion_automatica VARCHAR(255) NOT NULL,
+                                estado VARCHAR(20) NOT NULL,
+                                fecha_alerta TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                            """)
+                    logger.info("MySQL cacti telemetria_snmp and log_incidencias tables checked/created.")
                 except Exception as cacti_err:
-                    logger.error(f"Failed to initialize telemetria_snmp table in MySQL cacti: {cacti_err}")
+                    logger.error(f"Failed to initialize cacti tables in MySQL: {cacti_err}")
         else:
             # SQLite Schema
             queries = [
@@ -366,6 +378,18 @@ class DatabaseManager:
                         router_id TEXT NOT NULL,
                         latencia REAL NOT NULL,
                         recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    );
+                    """)
+                    cursor_tel.execute("""
+                    CREATE TABLE IF NOT EXISTS log_incidencias (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        router_id TEXT NOT NULL,
+                        tipo_incidencia TEXT NOT NULL,
+                        valor_capturado REAL NOT NULL,
+                        metrica_eficiencia TEXT NOT NULL,
+                        solucion_automatica TEXT NOT NULL,
+                        estado TEXT NOT NULL,
+                        fecha_alerta DATETIME DEFAULT CURRENT_TIMESTAMP
                     );
                     """)
                     conn_tel.commit()
@@ -707,6 +731,38 @@ class DatabaseManager:
                 finally:
                     conn.close()
             return await asyncio.to_thread(_insert_sqlite)
+
+    async def obtener_incidencias_infraestructura(self) -> list:
+        """
+        Recupera todas las incidencias de eficiencia de voz registradas en la base de datos cacti.
+        """
+        if self.pool_telemetria:
+            query = "SELECT id, router_id, tipo_incidencia, valor_capturado, metrica_eficiencia, solucion_automatica, estado, fecha_alerta FROM log_incidencias ORDER BY id DESC;"
+            try:
+                async with self.pool_telemetria.acquire() as conn:
+                    async with conn.cursor(aiomysql.DictCursor) as cur:
+                        await cur.execute(query)
+                        rows = await cur.fetchall()
+                        return rows
+            except Exception as e:
+                logger.error(f"Failed to fetch incidents from MySQL cacti: {e}")
+                return []
+        else:
+            query = "SELECT id, router_id, tipo_incidencia, valor_capturado, metrica_eficiencia, solucion_automatica, estado, fecha_alerta FROM log_incidencias ORDER BY id DESC;"
+            def _fetch_sqlite():
+                import sqlite3
+                conn = sqlite3.connect(self.sqlite_path_telemetria)
+                try:
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+                    cursor.execute(query)
+                    return [dict(row) for row in cursor.fetchall()]
+                except Exception as e:
+                    logger.error(f"Failed to fetch incidents from SQLite cacti.db: {e}")
+                    return []
+                finally:
+                    conn.close()
+            return await asyncio.to_thread(_fetch_sqlite)
 
     async def _execute(self, query: str, params: tuple) -> bool:
         """Helper to run DB updates on MySQL or SQLite."""

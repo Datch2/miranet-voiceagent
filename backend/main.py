@@ -230,6 +230,25 @@ async def obtener_telemetria():
     else:
         return JSONResponse(content=[], status_code=200)
 
+@app.get("/api/v1/sistema/incidencias", tags=["System"])
+async def obtener_incidencias():
+    """
+    Retrieves all voice efficiency and recovery incidents logged in the Cacti database.
+    """
+    try:
+        rows = await db.obtener_incidencias_infraestructura()
+        for r in rows:
+            if r.get("fecha_alerta"):
+                if hasattr(r["fecha_alerta"], "isoformat"):
+                    r["fecha_alerta"] = r["fecha_alerta"].isoformat()
+                else:
+                    r["fecha_alerta"] = str(r["fecha_alerta"])
+        return JSONResponse(content=rows, status_code=200)
+    except Exception as e:
+        logger.error(f"Error fetching incidents from cacti database: {e}")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
 @app.websocket("/ws")
 @app.websocket("/ws/voice")
 async def websocket_voice_endpoint(
