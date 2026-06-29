@@ -409,6 +409,32 @@
                 </button>
             </form>
 
+            <!-- Configuración del Servidor Backend (Útil para GitHub Pages) -->
+            <div style="margin-top: 20px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 15px;">
+                <details style="cursor: pointer; font-size: 13px; color: var(--text-secondary);" id="backend-settings-details">
+                    <summary style="outline: none; user-select: none; display: flex; align-items: center; justify-content: center; gap: 5px; font-weight: 500;">
+                        <span>⚙️</span> Configurar API Backend
+                    </summary>
+                    <div style="margin-top: 12px; cursor: default; text-align: left;">
+                        <label class="form-label" style="font-size: 10px; margin-bottom: 6px; display: block;" for="input-backend-url">URL de Servidor (Ej: ngrok o local)</label>
+                        <div class="input-wrapper">
+                            <input 
+                                type="url" 
+                                id="input-backend-url" 
+                                class="form-input" 
+                                style="padding: 10px 10px 10px 35px; font-size: 13px; background: rgba(5,11,24,0.8);"
+                                placeholder="http://localhost:8000 o https://ngrok.io"
+                                oninput="saveBackendUrl(this.value)"
+                            >
+                            <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 13px; opacity: 0.7;">🔗</span>
+                        </div>
+                        <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px; line-height: 1.3;">
+                            Por defecto se usará la URL local del navegador. Si hospedas la web en GitHub Pages, debes iniciar tu túnel ngrok y colocar aquí la URL generada.
+                        </p>
+                    </div>
+                </details>
+            </div>
+
             <div class="footer-note">
                 Soporte de Red Miranet SAC &copy; 2026. <br>
                 ¿Necesita ayuda? <a href="#">Contacte a Central de Operaciones</a>
@@ -418,6 +444,16 @@
 
     <script>
         let currentMethod = 'dni'; // Current active tab
+
+        // Load saved backend URL on page mount
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedUrl = localStorage.getItem('miranet_backend_url') || '';
+            document.getElementById('input-backend-url').value = savedUrl;
+        });
+
+        function saveBackendUrl(val) {
+            localStorage.setItem('miranet_backend_url', val.trim());
+        }
 
         // Toggle authentication tabs
         function switchTab(method) {
@@ -490,8 +526,12 @@
 
             console.log(`[Miranet Authentication] Initiating connection verification callback...`, payload);
 
-            // Real fetch lookup against the business database
-            fetch(`/api/v1/cliente/buscar?type=${encodeURIComponent(payload.type)}&value=${encodeURIComponent(payload.value)}`)
+            // Real fetch lookup against the business database using the configured backend URL
+            const savedBackend = localStorage.getItem('miranet_backend_url');
+            const backendBase = savedBackend ? savedBackend.replace(/\/$/, "") : window.location.origin;
+            const url = `${backendBase}/api/v1/cliente/buscar?type=${encodeURIComponent(payload.type)}&value=${encodeURIComponent(payload.value)}`;
+
+            fetch(url)
                 .then(response => {
                     btnSubmit.disabled = false;
                     btnSpinner.style.display = 'none';

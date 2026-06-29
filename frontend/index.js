@@ -1,6 +1,7 @@
-const TUNNEL_URL = "https://ashes-twiddling-esquire.ngrok-free.dev";
+const savedBackendUrl = localStorage.getItem('miranet_backend_url');
+const TUNNEL_URL = savedBackendUrl ? savedBackendUrl.replace(/\/$/, "") : window.location.origin;
 const API_URL = `${TUNNEL_URL}/api/v1/cliente/buscar`;
-const WS_URL = `${TUNNEL_URL.replace("https://", "wss://")}/ws`;
+const WS_URL = `${TUNNEL_URL.replace("https://", "wss://").replace("http://", "ws://")}/ws`;
 
 // WebSocket & Audio State Variables
 let socket = null;
