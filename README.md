@@ -100,7 +100,7 @@ pip install -r requirements.txt
 Asegúrate de que Ollama está activo en segundo plano y descarga el modelo Mistral:
 
 ```bash
-ollama pull mistral
+ollama pull phi3
 ```
 
 ### Paso 3: Configurar Variables de Entorno
@@ -116,7 +116,7 @@ DB_NAME=miranet_voiceagent
 
 # Configuración de Ollama
 OLLAMA_BASE_URL=http://127.0.0.1:8000
-OLLAMA_MODEL=mistral
+OLLAMA_MODEL=phi3
 
 # Configuración de Whisper
 WHISPER_MODEL_NAME=tiny
