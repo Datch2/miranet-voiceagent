@@ -1,157 +1,141 @@
-# Miranet VoiceAgent — Sistema de Voz Interactivo en Tiempo Real (2026)
+# Miranet VoiceAgent — Sistema de Voz Interactivo y Remediación de Red (2026)
 
-**Miranet VoiceAgent** es una plataforma avanzada de soporte de voz e inteligencia artificial en tiempo real, diseñada específicamente para el procesamiento automático y síncrono de reportes de fallas de internet en la empresa de telecomunicaciones **Miranet SAC** para el año 2026. 
+**Miranet VoiceAgent** es una plataforma avanzada de soporte de voz e inteligencia artificial en tiempo real para la empresa de telecomunicaciones **Miranet SAC**. 
 
-El sistema actúa simultáneamente como **Operadora Automática** (canal de voz directo con el cliente) y **Técnico de Monitoreo** (clasificando incidencias, estimando la causa raíz del problema con su respectiva confianza, y analizando métricas de red en tiempo real).
+El sistema actúa simultáneamente como **Operadora Automática** (conversando con el cliente por voz o texto) y **Orquestador de Infraestructura** (diagnosticando la red, disparando scripts de autorecuperación en caliente y reportando la telemetría en vivo a un panel de control).
 
 ---
 
 ## 🚀 Características Principales
 
-1. **Procesamiento de Voz Asíncrono de Baja Latencia:** Captura y re-muestrea audio del micrófono del cliente a mono PCM de 16-bit a 16kHz, transmitiéndolo a través de WebSockets de manera continua.
-2. **Transcripción Local Rápida:** Utiliza una versión optimizada local de **OpenAI Whisper (modelo `tiny`)** ejecutada localmente en la CPU/GPU para transcribir la voz del cliente en tiempo récord.
-3. **Núcleo de Inteligencia Artificial (Mistral 7B):** Integrado de forma local mediante **Ollama**, aplicando reglas de negocio y restricciones estrictas a través de un único prompt optimizado:
-   - **Evaluación y Clasificación:** Nivel asignado de gravedad (`bajo`, `medio`, `alto`, `critico`).
-   - **Control de Ambigüedad:** Detección de reportes vagos para realizar preguntas de aclaración.
-   - **Diagnóstico Técnico de Causa Raíz:** Cruza la queja del cliente con el estado actual simulado de la red (`ESTADO_RED`).
-   - **Concisión Absoluta:** Respuestas de voz súper cortas y directas (máximo 2 oraciones o 25 palabras).
-4. **Persistencia Dual (MySQL & SQLite):** Conexión asíncrona robusta a **MySQL** (`aiomysql`) con detección y creación automática de bases de datos y tablas. Si la instancia de MySQL no está disponible, el sistema cambia dinámicamente y sin interrupciones a una base de datos local **SQLite**.
-5. **Interfaz Premium Glassmorphism:** Consola de monitoreo moderna con efectos visuales dinámicos, un osciloscopio interactivo conectado a la API de Web Audio para renderizar las ondas de voz, widgets de latencia/jitter/ancho de banda y síntesis de voz automática (`SpeechSynthesis` de HTML5) para reproducir la respuesta del agente.
+1. **Procesamiento de Voz Asíncrono de Baja Latencia:** Captura de micrófono en mono PCM de 16-bit a 16kHz y transmisión continua por WebSockets.
+2. **Transcripción Local Rápida:** Reconocimiento de voz local con **OpenAI Whisper (modelo `tiny`)** en CPU/GPU para eliminar dependencias externas en la nube.
+3. **Núcleo de Inteligencia Artificial (Phi-3 Mini 3.8B):** Integrado mediante **Ollama local** (reemplazando a Mistral para reducir el consumo de RAM a ~2.2 GB y procesar la respuesta en **menos de 2 segundos**):
+   - **Clasificación del Incidente:** Gravedad de la falla (`bajo`, `medio`, `alto`, `critico`).
+   - **Diagnóstico y Causa Raíz:** Cruce de la descripción hablada del cliente con las métricas del router obtenidas en vivo.
+   - **Salida en JSON Estricto:** Procesamiento seguro de datos estructurados para automatizar las reparaciones.
+4. **Motor de Remediación Activa (Autorecuperación):**
+   - *Aprovisionamiento de QoS:* Restablece y optimiza la velocidad en routers saturados (baja CPU y pérdida al 0%).
+   - *Interface Flapping:* Simula el reinicio físico apagando y encendiendo la WAN en la base de datos si la interfaz cae.
+   - *Failover de Rutas:* Desvía el tráfico hacia gateways de respaldo ante averías masivas en la zona.
+   - *Vaciado de Caché:* Limpia registros DNS locales del servidor (`ipconfig /flushdns`).
+   - *Escalamiento Técnico:* Despacha un webhook JSON de alerta a soporte técnico para roturas físicas de cable.
+5. **Consola Cacti Dinámica (`http://localhost/cacti/`):** 
+   - Gráfico de latencia en tiempo real (últimos 20 ticks) mediante **Chart.js**.
+   - Mapeo dinámico de **24 routers de clientes** desde MySQL con estado en vivo (`Activo` / `Offline`).
+   - Historial de incidencias resueltas (`log_incidencias`) con auditoría de métricas de eficiencia.
+6. **Simulador de Telemetría Cerrado (`simulate_telemetry.py`):**
+   - Inyecta anomalías de red (lag crítico o caídas) en la base de datos para pruebas.
+   - **Bucle Cerrado:** El simulador monitoriza la base de datos y se apaga de forma autónoma en cuanto capta que el agente de voz solucionó el problema del router del cliente.
+   - Permite seleccionar cuál de los routers de los clientes (`RT000001` a `RT000024`) simular desde un menú interactivo.
+7. **Persistencia Dual (MySQL & SQLite):** Operación en **MySQL (puerto 3307)** con cambio automático a **SQLite local** si el servidor principal está apagado.
 
 ---
 
-## 🛠️ Tecnologías y Herramientas Utilizadas
+## 🛠️ Tecnologías y Herramientas
 
-El ecosistema de desarrollo del proyecto está compuesto por las siguientes tecnologías:
-
-* **Lenguaje:** [Python 3.10+](https://www.python.org/) para todo el ecosistema del backend.
-* **Framework Web & APIs:** [FastAPI](https://fastapi.tiangolo.com/) y [Uvicorn](https://www.uvicorn.org/) para servir el backend y administrar WebSockets binarios bidireccionales de alta frecuencia.
-* **Modelos de Inteligencia Artificial:**
-  - **OpenAI Whisper (tiny):** Procesador local de reconocimiento de voz (STT).
-  - **Ollama (Mistral 7B):** Motor conversacional local y clasificador de texto configurado con salida estricta en formato JSON.
-* **Base de Datos:**
-  - **MySQL (Principal):** Mediante el conector asíncrono `aiomysql`.
-  - **SQLite (Fallback):** Para portabilidad local sin configuración externa.
-* **Frontend:**
-  - **Estructura y Lógica:** HTML5 semántico y Vanilla JavaScript.
-  - **Estilos:** Vanilla CSS moderno basado en HSL, layouts Grid/Flexbox, efectos translúcidos (Glassmorphism), sombras con degradados neón y variables dinámicas.
-  - **Audio y Visualización:** Web Audio API (analizador FFT) y renderizado de ondas mediante Canvas 2D.
-  - **Voz del Agente (TTS):** API nativa de `SpeechSynthesis` de HTML5 configurada para idioma español.
+* **Lenguaje:** [Python 3.10+](https://www.python.org/) para backend y automatización.
+* **APIs & WebSockets:** [FastAPI](https://fastapi.tiangolo.com/) y [Uvicorn](https://www.uvicorn.org/) para flujo binario síncrono.
+* **IA Local:** OpenAI Whisper (STT) + Ollama Phi-3 (LLM) + Web Speech API (TTS en navegador).
+* **Base de Datos:** MySQL (XAMPP - puerto 3307) para negocio (`miranet_db`) y telemetría (`cacti`).
+* **Frontend:** HTML5 + Vanilla CSS moderno (Glassmorphism, variables HSL) + Canvas 2D osciloscopio de voz.
 
 ---
 
 ## 📂 Estructura del Proyecto
 
-El proyecto está organizado en una estructura limpia y desacoplada:
+El código está estructurado en el **Disco D** de la siguiente manera:
 
 ```text
-miranet-voiceagent/
+D:/miranet-voiceagent/
 │
-├── backend/                        # Lógica del servidor y Agentes de IA
-│   ├── agents/                     # Módulos de toma de decisiones
-│   │   ├── __init__.py             # Inicializador del paquete de agentes
-│   │   ├── transcriber.py          # Transcriptor local de audio (Whisper)
-│   │   ├── responder.py            # Generador de respuestas y clasificación (Ollama LLM)
-│   │   ├── network_monitor.py      # Calculadora en tiempo real de jitter, pérdida y ancho de banda
-│   │   ├── classifier.py           # Agente clasificador (mantenido para retrocompatibilidad)
-│   │   └── orchestrator.py         # Orquestador del flujo y persistencia de datos
+├── backend/                        # Servidor de FastAPI y Orquestación
+│   ├── agents/                     # Agentes autónomos
+│   │   ├── transcriber.py          # Transcriptor Whisper local
+│   │   ├── responder.py            # Analizador LLM y clasificador
+│   │   ├── network_monitor.py      # Calculador de jitter y pérdida de paquetes
+│   │   └── orchestrator.py         # Orquestador del flujo y base de datos
 │   │
-│   ├── db/                         # Configuración y consultas de base de datos
-│   │   └── database.py             # Administrador de MySQL (aiomysql) y SQLite
+│   ├── db/                         # Configuración y sentencias de base de datos
+│   │   └── database.py             # Semillero y conector MySQL/SQLite
 │   │
-│   ├── config.py                   # Lector de configuraciones del sistema (.env)
-│   └── main.py                     # Punto de entrada de FastAPI y servidor de WebSockets
+│   ├── utils/                      # Módulos de soporte técnico
+│   │   └── remediation.py          # Controlador de remediación y pings
+│   │
+│   ├── config.py                   # Lector de variables del entorno (.env)
+│   └── main.py                     # Inicializador del servidor ASGI
 │
-├── frontend/                       # Interfaz gráfica del usuario
-│   ├── index.html                  # Estructura del panel de monitoreo y consola de voz
-│   ├── index.css                   # Diseño visual premium, colores y animaciones
-│   └── index.js                    # Captura de micrófono, WebSocket y síntesis de voz (TTS)
+├── frontend/                       # Código de la aplicación web cliente
+│   ├── agent.html                  # Panel de interacción y voz
+│   ├── index.css                   # Diseño visual translúcido glassmorphism
+│   └── index.js                    # Grabadora de micrófono y WebSockets
 │
-├── models/                         # Caché local de modelos descargados (Whisper)
-│   └── whisper/                    # Pesos descargados localmente
-│
-├── .env                            # Archivo de variables de entorno del sistema
-├── requirements.txt                # Dependencias de Python requeridas
-├── db_setup.sql                    # Script SQL para base de datos con datos de prueba
-├── test_client.py                  # Cliente de terminal para simulación de voz
-└── README.md                       # Documentación principal del sistema
+├── models/                         # Caché local de Whisper
+├── scratch/                        # Scripts de verificación y semillado
+├── simulate_telemetry.py           # Simulador interactivo de fallas de red
+└── README.md                       # Documentación principal
 ```
+
+*Nota: La interfaz web de telemetría se aloja en el directorio Apache de XAMPP: `D:\XAMMP\htdocs\cacti\index.php`.*
 
 ---
 
 ## ⚙️ Configuración e Instalación
 
-Sigue estos pasos para instalar e iniciar el proyecto en tu entorno local:
-
 ### Requisitos Previos
 1. Tener instalado [Python 3.10+](https://www.python.org/downloads/).
 2. Tener instalado y corriendo [Ollama](https://ollama.com/).
-3. Tener una base de datos [MySQL](https://www.mysql.com/) activa (opcional, el sistema creará todo automáticamente o usará SQLite como fallback si no está corriendo).
+3. Iniciar el panel de control de XAMPP (Apache en puerto 80 y MySQL en puerto 3307).
 
-### Paso 1: Clonar e Instalar Dependencias
-Abre tu consola de comandos en la carpeta del proyecto y ejecuta:
-
+### Paso 1: Instalar Dependencias de Python
+Abre una terminal y ejecuta:
 ```bash
-# Instalar los paquetes requeridos de Python
 pip install -r requirements.txt
 ```
 
-### Paso 2: Descargar el Modelo en Ollama
-Asegúrate de que Ollama está activo en segundo plano y descarga el modelo Mistral:
-
+### Paso 2: Descargar Phi-3 en Ollama
+Con Ollama corriendo en segundo plano:
 ```bash
-ollama pull mistral
+ollama pull phi3
 ```
 
 ### Paso 3: Configurar Variables de Entorno
-Crea o edita el archivo `.env` en la raíz del proyecto para adecuar los accesos a tu base de datos local y simular el estado de la red:
-
+Crea o edita tu archivo `.env` en la raíz del proyecto:
 ```ini
-# Configuración de Base de Datos MySQL
+# MySQL Database Config
 DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=***
-DB_PASSWORD=***
-DB_NAME=miranet_voiceagent
+DB_PORT=3307
+DB_USER=root
+DB_PASSWORD=
+DB_NAME=miranet_db
+DB_NAME_TELEMETRIA=cacti
 
-# Configuración de Ollama
-OLLAMA_BASE_URL=http://127.0.0.1:8000
-OLLAMA_MODEL=mistral
+# Ollama Settings
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=phi3
 
-# Configuración de Whisper
+# Whisper Settings
 WHISPER_MODEL_NAME=tiny
 WHISPER_DOWNLOAD_ROOT=D:\miranet-voiceagent\models\whisper
-
-# Parámetro de Simulación de Red (ESTABLE o FALLA_MASIVA)
-ESTADO_RED=ESTABLE
 ```
 
 ---
 
-## 🏁 Inicio de Trabajo y Ejecución
+## 🏁 Ejecución del Sistema
 
-Una vez completada la configuración, puedes arrancar el agente con los siguientes comandos:
-
-### 1. Iniciar el Servidor Backend
-Ejecuta el script principal de inicialización en la consola:
-
+### 1. Arrancar el Backend (FastAPI)
 ```bash
 python backend/main.py
 ```
-*El backend iniciará las conexiones con la base de datos, descargará o cargará el modelo local de Whisper en memoria, y encenderá el servidor ASGI en el puerto `8000`.*
 
-### 2. Acceso a la Interfaz Gráfica
-Abre tu navegador de preferencia e ingresa al siguiente enlace:
-
-👉 **[http://localhost:8000/](http://localhost:8000/)**
-
-> [!TIP]
-> **Compatibilidad con Live Server:** Si estás utilizando la extensión *Live Server* de Visual Studio Code (ejecutando la web en el puerto `5500`), el cliente frontend redirigirá de manera automática todos los servicios de API y canales WebSockets al puerto del backend (`8000`), por lo que puedes interactuar y depurar estilos directamente desde ahí.
-
-### 3. Realizar una Simulación por Consola (Opcional)
-Si deseas verificar las conexiones y la respuesta de red sin usar el micrófono, puedes correr el cliente de prueba sintético:
-
+### 2. Arrancar el Simulador de Telemetría
+En otra terminal independiente:
 ```bash
-python test_client.py
+python simulate_telemetry.py
 ```
-*Este cliente transmitirá un tono de audio simulado a través del canal WebSockets, indicando en consola las latencias de procesamiento y reportes de jitter en tiempo real.*
+*Tip: Selecciona la opción `[4]` para cambiar el router a `RT000001` (Diego Torres) y luego la opción `[2]` para inyectar una falla de red.*
+
+### 3. Abrir en el Navegador
+*   **Panel del Cliente:** Ingresa a [http://localhost:8000/](http://localhost:8000/) y loguéate con el DNI de Diego Torres (`12345678`).
+*   **Consola Cacti:** Ingresa a [http://localhost/cacti/](http://localhost/cacti/) para ver las latencias del router y su estado en tiempo real.
+*   **Conversar/Arreglar:** Pídele al bot *"Mi internet está lento"*. Observa cómo el orquestador aplica el script, Cacti se normaliza solo y la pantalla de Diego Torres pasa a estar en **`OPERATIVO`**.
