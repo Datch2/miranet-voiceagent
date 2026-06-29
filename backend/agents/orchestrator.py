@@ -418,12 +418,17 @@ class OrchestratorAgent:
         elif intent.lower() == "alto":
             # Individual total outage
             interface_status = network_status.get("interface_status") if network_status else "up"
+            packet_loss = network_status.get("packet_loss") if network_status else 0.0
             if interface_status.lower() == "down":
                 # Logical interface down -> Trigger interface flap sequence
                 logger.info(f"[Remediation Hook] Interface DOWN detected for {router_sn}. Initiating reset flapping...")
                 await RemediationController.reset_wan_interface(router_sn)
+            elif packet_loss > 0.0 and packet_loss < 20.0:
+                # Moderate packet loss/congestion -> Apply QoS/Optimizations to restore
+                logger.info(f"[Remediation Hook] Moderate packet loss ({packet_loss}%) detected. Auto-optimizing QoS profile...")
+                await RemediationController.apply_qos_profile(router_sn, profile_speed_mbps=150)
             else:
-                # Physical outage -> Escalate support ticket
+                # Severe loss/Physical outage -> Escalate support ticket
                 logger.info(f"[Remediation Hook] Physical outage detected for {router_sn}. Escalating to field technician...")
                 await RemediationController.send_escalation_webhook(1234, client_name, transcription)
                 

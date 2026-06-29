@@ -148,10 +148,12 @@ class RemediationController:
             if db.use_sqlite:
                 q_down = "UPDATE equipos_red SET interface_status = 'down', packet_loss = 100.0 WHERE zona_id = ?;"
                 q_up = "UPDATE equipos_red SET interface_status = 'up', packet_loss = 0.0, cpu_usage = 25.0 WHERE zona_id = ?;"
+                q_zona = "UPDATE zonas SET estado = 'operativo' WHERE id = ?;"
                 params = (zona_id,)
             else:
                 q_down = "UPDATE equipos_red SET interface_status = 'down', packet_loss = 100.0 WHERE zona_id = %s;"
                 q_up = "UPDATE equipos_red SET interface_status = 'up', packet_loss = 0.0, cpu_usage = 25.0 WHERE zona_id = %s;"
+                q_zona = "UPDATE zonas SET estado = 'operativo' WHERE id = %s;"
                 params = (zona_id,)
                 
             logger.info(f"[Remediation] Interface setting to DOWN for zone {zona_id}...")
@@ -162,6 +164,9 @@ class RemediationController:
             
             logger.info(f"[Remediation] Interface setting back to UP (Restored) for zone {zona_id}...")
             await db._execute(q_up, params)
+            
+            logger.info(f"[Remediation] Restoring zone status to 'operativo' for zone {zona_id}...")
+            await db._execute(q_zona, params)
             
             # Log this action into log_incidencias of cacti
             await RemediationController._log_cacti_action(
@@ -193,12 +198,15 @@ class RemediationController:
             # Update DB parameters to simulate a clear, high-bandwidth path
             if db.use_sqlite:
                 query = "UPDATE equipos_red SET cpu_usage = 20.0, mem_usage = 35.0, packet_loss = 0.0 WHERE zona_id = ?;"
+                query_zona = "UPDATE zonas SET estado = 'operativo' WHERE id = ?;"
                 params = (zona_id,)
             else:
                 query = "UPDATE equipos_red SET cpu_usage = 20.0, mem_usage = 35.0, packet_loss = 0.0 WHERE zona_id = %s;"
+                query_zona = "UPDATE zonas SET estado = 'operativo' WHERE id = %s;"
                 params = (zona_id,)
                 
             await db._execute(query, params)
+            await db._execute(query_zona, params)
             
             # Log in Cacti
             await RemediationController._log_cacti_action(
@@ -229,12 +237,15 @@ class RemediationController:
             # Set interface back to up and route through backup router
             if db.use_sqlite:
                 query = "UPDATE equipos_red SET interface_status = 'up', packet_loss = 0.0, cpu_usage = 30.0 WHERE zona_id = ?;"
+                query_zona = "UPDATE zonas SET estado = 'operativo' WHERE id = ?;"
                 params = (zona_id,)
             else:
                 query = "UPDATE equipos_red SET interface_status = 'up', packet_loss = 0.0, cpu_usage = 30.0 WHERE zona_id = %s;"
+                query_zona = "UPDATE zonas SET estado = 'operativo' WHERE id = %s;"
                 params = (zona_id,)
                 
             await db._execute(query, params)
+            await db._execute(query_zona, params)
             
             # Log in Cacti
             await RemediationController._log_cacti_action(
