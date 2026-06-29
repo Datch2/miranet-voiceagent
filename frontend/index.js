@@ -32,6 +32,7 @@ const ttsToggle = document.getElementById('tts-toggle');
 const overlayText = document.getElementById('visualizer-overlay-text');
 const textQueryInput = document.getElementById('text-query-input');
 const sendQueryBtn = document.getElementById('send-query-btn');
+const logoutBtn = document.getElementById('logout-btn');
 
 // Metadata Nodes
 const metaWhisper = document.getElementById('meta-whisper');
@@ -128,6 +129,17 @@ window.addEventListener('DOMContentLoaded', () => {
             sendTextInput();
         }
     });
+
+    // Setup Logout Button Event
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', () => {
+            console.log("Logging out client session...");
+            if (socket) {
+                socket.close();
+            }
+            window.location.href = '/';
+        });
+    }
 });
 
 function resizeCanvas() {

@@ -18,9 +18,15 @@
             <div class="logo-icon"></div>
             <h1>Miranet VoiceAgent</h1>
         </div>
-        <div class="connection-status-badge" id="status-indicator">
-            <span class="status-dot"></span>
-            <span id="status-text">Desconectado</span>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <div class="connection-status-badge" id="status-indicator">
+                <span class="status-dot"></span>
+                <span id="status-text">Desconectado</span>
+            </div>
+            <button id="logout-btn" class="btn btn-outline" style="padding: 6px 12px; font-size: 13px; display: flex; align-items: center; gap: 6px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: rgba(255,255,255,0.02); color: var(--text-secondary); cursor: pointer; transition: var(--transition-smooth);" onmouseover="this.style.borderColor='var(--danger-color)'; this.style.color='var(--danger-color)'; this.style.background='rgba(239, 68, 68, 0.05)';" onmouseout="this.style.borderColor='rgba(255,255,255,0.1)'; this.style.color='var(--text-secondary)'; this.style.background='rgba(255,255,255,0.02)';">
+                <span class="btn-icon">🚪</span>
+                <span class="btn-label">Salir</span>
+            </button>
         </div>
     </header>
 
