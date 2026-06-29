@@ -1,7 +1,6 @@
-const savedBackendUrl = localStorage.getItem('miranet_backend_url');
-const TUNNEL_URL = savedBackendUrl ? savedBackendUrl.replace(/\/$/, "") : window.location.origin;
+const TUNNEL_URL = "https://ashes-twiddling-esquire.ngrok-free.dev"; // Reemplazar con tu URL activa de ngrok
 const API_URL = `${TUNNEL_URL}/api/v1/cliente/buscar`;
-const WS_URL = `${TUNNEL_URL.replace("https://", "wss://").replace("http://", "ws://")}/ws`;
+const WS_URL = `${TUNNEL_URL.replace("https://", "wss://")}/ws`;
 
 // WebSocket & Audio State Variables
 let socket = null;
