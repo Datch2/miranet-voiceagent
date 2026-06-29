@@ -223,6 +223,9 @@ class OrchestratorAgent:
             bandwidth_kbps=summary["avg_bandwidth_kbps"]
         )
 
+        # Trigger active remediation and update cached connection parameters
+        await self._handle_remediation_and_update_status(session, intent, transcription)
+
         return {
             "transcription": transcription,
             "response": response,
@@ -234,7 +237,7 @@ class OrchestratorAgent:
                 "responder": r_latency
             },
             "client_info": client_info,
-            "network_status": network_status,
+            "network_status": session["network_status"],
             "diagnostico_causa_raiz": diagnostico,
             "porcentaje_confianza": f"{confianza_str}%"
         }
@@ -349,6 +352,9 @@ class OrchestratorAgent:
             bandwidth_kbps=summary["avg_bandwidth_kbps"]
         )
 
+        # Trigger active remediation and update cached connection parameters
+        await self._handle_remediation_and_update_status(session, intent, transcription)
+
         return {
             "transcription": transcription,
             "response": response,
@@ -360,7 +366,7 @@ class OrchestratorAgent:
                 "responder": r_latency
             },
             "client_info": client_info,
-            "network_status": network_status,
+            "network_status": session["network_status"],
             "diagnostico_causa_raiz": diagnostico,
             "porcentaje_confianza": f"{confianza_str}%"
         }
@@ -377,3 +383,57 @@ class OrchestratorAgent:
         logger.info(f"Session {session_id} ended. Final network summary: {summary}")
         
         return summary
+
+    async def _handle_remediation_and_update_status(
+        self,
+        session: dict,
+        intent: str,
+        transcription: str
+    ):
+        """
+        Executes active remediation steps asynchronously based on intent gravity 
+        and updates the cached session network status.
+        """
+        from backend.utils.remediation import RemediationController
+        
+        client_info = session.get("client_info")
+        network_status = session.get("network_status")
+        
+        if not client_info:
+            return
+            
+        router_sn = client_info.get("router_sn", "RT000002")
+        client_name = client_info.get("nombre", "Sergio Perez")
+        
+        # 1. Always run a live ping troubleshooting diagnostic
+        await RemediationController.run_ping()
+        
+        # 2. Trigger remediation steps based on classified gravity
+        if intent.lower() == "medio":
+            # Logical network degradation -> Apply QoS Profile and Flush DNS
+            logger.info(f"[Remediation Hook] Logical slowness detected. Re-provisioning QoS profile for {router_sn}...")
+            await RemediationController.apply_qos_profile(router_sn, profile_speed_mbps=150)
+            await RemediationController.flush_dns()
+            
+        elif intent.lower() == "alto":
+            # Individual total outage
+            interface_status = network_status.get("interface_status") if network_status else "up"
+            if interface_status.lower() == "down":
+                # Logical interface down -> Trigger interface flap sequence
+                logger.info(f"[Remediation Hook] Interface DOWN detected for {router_sn}. Initiating reset flapping...")
+                await RemediationController.reset_wan_interface(router_sn)
+            else:
+                # Physical outage -> Escalate support ticket
+                logger.info(f"[Remediation Hook] Physical outage detected for {router_sn}. Escalating to field technician...")
+                await RemediationController.send_escalation_webhook(1234, client_name, transcription)
+                
+        elif intent.lower() == "critico":
+            # Zonal/mass critical issue -> Trigger automatic failover routing
+            logger.info(f"[Remediation Hook] Critical mass outage. Triggering backup failover routing for {router_sn}...")
+            await RemediationController.trigger_failover(router_sn)
+            
+        # 3. Pull fresh network status parameters from DB to reflect the new state in the current session
+        fresh_status = await db.get_network_status_by_zone(client_info["zona_id"])
+        if fresh_status:
+            session["network_status"] = fresh_status
+            logger.info(f"[Remediation Hook] Updated cached session network_status: {fresh_status}")
