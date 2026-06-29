@@ -110,8 +110,8 @@ DB_PASSWORD=
 DB_NAME=miranet_db
 DB_NAME_TELEMETRIA=cacti
 
-# Ollama Settings
-OLLAMA_BASE_URL=http://127.0.0.1:11434
+# Configuración de Ollama
+OLLAMA_BASE_URL=http://127.0.0.1:8000
 OLLAMA_MODEL=phi3
 
 # Whisper Settings
