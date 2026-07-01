@@ -1,7 +1,6 @@
 import logging
 from backend.db.database import db
 from backend.agents.transcriber import TranscriberAgent
-from backend.agents.classifier import ClassifierAgent
 from backend.agents.responder import ResponderAgent
 from backend.agents.network_monitor import NetworkMonitorAgent
 
@@ -13,11 +12,9 @@ class OrchestratorAgent:
     def __init__(
         self,
         transcriber: TranscriberAgent,
-        classifier: ClassifierAgent,
         responder: ResponderAgent
     ):
         self.transcriber = transcriber
-        self.classifier = classifier
         self.responder = responder
         # Store active session contexts in memory
         self.active_sessions = {}

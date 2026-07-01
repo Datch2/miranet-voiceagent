@@ -19,7 +19,6 @@ from backend.config import settings
 from backend.db.database import db
 from backend.agents import (
     TranscriberAgent,
-    ClassifierAgent,
     ResponderAgent,
     OrchestratorAgent
 )
@@ -34,7 +33,6 @@ logger = logging.getLogger("MiranetVoiceAgentServer")
 
 # Global instances of agents
 transcriber = TranscriberAgent()
-classifier = ClassifierAgent()
 responder = ResponderAgent()
 orchestrator: OrchestratorAgent | None = None
 
@@ -54,7 +52,6 @@ async def lifespan(app: FastAPI):
         # 3. Instantiate Orchestrator
         orchestrator = OrchestratorAgent(
             transcriber=transcriber,
-            classifier=classifier,
             responder=responder
         )
         
@@ -69,8 +66,7 @@ async def lifespan(app: FastAPI):
         logger.info("Shutting down Miranet VoiceAgent server lifecycles...")
         # 1. Disconnect Database Pool
         await db.disconnect()
-        # 2. Close LLM agent connection clients
-        await classifier.close()
+        # 2. Close LLM connection client
         await responder.close()
         logger.info("Server shutdown complete.")
 
