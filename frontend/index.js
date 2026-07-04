@@ -1,6 +1,9 @@
-const TUNNEL_URL = "https://ashes-twiddling-esquire.ngrok-free.dev"; // Reemplazar con tu URL activa de ngrok
+// Dynamically resolve URL based on current window location
+const PROTOCOL = window.location.protocol;
+const HOST = window.location.host; // includes port
+const TUNNEL_URL = `${PROTOCOL}//${HOST}`;
 const API_URL = `${TUNNEL_URL}/api/v1/cliente/buscar`;
-const WS_URL = `${TUNNEL_URL.replace("https://", "wss://")}/ws`;
+const WS_URL = `${PROTOCOL === "https:" ? "wss:" : "ws:"}//${HOST}/ws`;
 
 // WebSocket & Audio State Variables
 let socket = null;
