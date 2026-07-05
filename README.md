@@ -139,3 +139,32 @@ python simulate_telemetry.py
 *   **Panel del Cliente:** Ingresa a [http://localhost:8000/](http://localhost:8000/) y loguéate con el DNI de Diego Torres (`12345678`).
 *   **Consola Cacti:** Ingresa a [http://localhost/cacti/](http://localhost/cacti/) para ver las latencias del router y su estado en tiempo real.
 *   **Conversar/Arreglar:** Pídele al bot *"Mi internet está lento"*. Observa cómo el orquestador aplica el script, Cacti se normaliza solo y la pantalla de Diego Torres pasa a estar en **`OPERATIVO`**.
+
+---
+
+## 🐳 Despliegue en la Nube con Docker (Producción)
+
+El proyecto está preparado para correr de forma 100% autónoma en servidores de producción (como **DigitalOcean**) a través de contenedores Docker. Esto empaqueta MySQL, Cacti, el Agente de Voz y el motor local de IA (Ollama) sin necesidad de configurar nada en el servidor físico.
+
+### Requisitos en el Servidor
+*   Un servidor Linux (Ubuntu recomendado) con **Docker** y **Docker Compose** instalados (puedes usar la imagen preconfigurada "Docker" del Marketplace de DigitalOcean).
+*   Se recomienda un mínimo de **4GB o 8GB de RAM** para soportar el modelo local de Inteligencia Artificial.
+
+### Instrucciones de Despliegue Rápido
+1.  Clona el repositorio en tu servidor:
+    ```bash
+    git clone https://github.com/Datch2/miranet-voiceagent.git /root/miranet-voiceagent
+    cd /root/miranet-voiceagent
+    ```
+2.  Copia la carpeta local de Cacti (`D:\XAMMP\htdocs\cacti`) dentro del proyecto en el servidor usando SFTP en la ruta `/root/miranet-voiceagent/cacti/`.
+3.  Dale permisos de ejecución al script automatizado:
+    ```bash
+    chmod +x deploy.sh
+    ```
+4.  Ejecuta el script de despliegue:
+    ```bash
+    ./deploy.sh
+    ```
+
+El script levantará la arquitectura, importará la base de datos `cacti_full.sql`, corregirá las rutas internas de logs para Linux y descargará el modelo de IA `phi3` en segundo plano. Al terminar, la aplicación estará en vivo en tu dirección IP pública.
+
