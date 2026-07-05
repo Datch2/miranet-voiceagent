@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: miranet-mysql-db
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: miranet-ollama
+    restart: always
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  agent:
+    build: .
+    container_name: miranet-voice-agent
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=miranet_db
+      - DB_NAME_TELEMETRIA=cacti
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=phi3
+      - WHISPER_MODEL_NAME=tiny
+      - WHISPER_DOWNLOAD_ROOT=/app/models/whisper
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - ollama
+
+  cacti:
+    build: ./cacti_docker
+    container_name: miranet-cacti-web
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      - RUNNING_IN_DOCKER=yes
+    volumes:
+      - ./cacti:/var/www/html/cacti
+    depends_on:
+      - db
+
+volumes:
+  mysql_data:
+  ollama_data:
