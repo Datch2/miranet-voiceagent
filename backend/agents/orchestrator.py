@@ -152,6 +152,28 @@ class OrchestratorAgent:
         enriched_network_status = dict(network_status) if network_status else {}
         enriched_network_status["realtime_latency_ms"] = rt_latency
         enriched_network_status["realtime_jitter_ms"] = rt_jitter
+        router_id = client_info.get("router_sn", "RT000002") if client_info else "RT000002"
+        snmp_latency = await db.get_latest_router_latency(router_id)
+        enriched_network_status["snmp_latency_ms"] = snmp_latency
+
+        # Read last 15 lines from the network.log file (dynamic cross-platform path)
+        raw_logs = ""
+        try:
+            from pathlib import Path
+            project_root = Path(__file__).resolve().parent.parent.parent
+            log_file_path = project_root / "logs" / "network.log"
+            if log_file_path.exists():
+                with open(log_file_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                    # Filter lines that belong to this client's router SN
+                    client_lines = [line for line in lines if router_id in line]
+                    raw_logs = "".join(client_lines[-15:])
+            else:
+                raw_logs = "No log entries found. Network log file does not exist yet."
+        except Exception as e:
+            raw_logs = f"Error reading network log file: {str(e)}"
+            
+        enriched_network_status["raw_network_logs"] = raw_logs
 
         result_json, r_latency = await self.responder.generate_response(
             text=transcription,
@@ -281,6 +303,28 @@ class OrchestratorAgent:
         enriched_network_status = dict(network_status) if network_status else {}
         enriched_network_status["realtime_latency_ms"] = rt_latency
         enriched_network_status["realtime_jitter_ms"] = rt_jitter
+        router_id = client_info.get("router_sn", "RT000002") if client_info else "RT000002"
+        snmp_latency = await db.get_latest_router_latency(router_id)
+        enriched_network_status["snmp_latency_ms"] = snmp_latency
+
+        # Read last 15 lines from the network.log file (dynamic cross-platform path)
+        raw_logs = ""
+        try:
+            from pathlib import Path
+            project_root = Path(__file__).resolve().parent.parent.parent
+            log_file_path = project_root / "logs" / "network.log"
+            if log_file_path.exists():
+                with open(log_file_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                    # Filter lines that belong to this client's router SN
+                    client_lines = [line for line in lines if router_id in line]
+                    raw_logs = "".join(client_lines[-15:])
+            else:
+                raw_logs = "No log entries found. Network log file does not exist yet."
+        except Exception as e:
+            raw_logs = f"Error reading network log file: {str(e)}"
+            
+        enriched_network_status["raw_network_logs"] = raw_logs
 
         result_json, r_latency = await self.responder.generate_response(
             text=transcription,

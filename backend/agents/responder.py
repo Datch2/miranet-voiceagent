@@ -56,18 +56,37 @@ class ResponderAgent:
         if network_status:
             rt_latency = network_status.get("realtime_latency_ms", 12)
             rt_jitter = network_status.get("realtime_jitter_ms", 2)
+            snmp_latency = network_status.get("snmp_latency_ms", 15.0)
+            
+            # Correlate stress test simulation parameters to make them dynamic and realistic
+            cpu = network_status.get('cpu_usage', 25.0)
+            loss = network_status.get('packet_loss', 0.0)
+            interface = network_status.get('interface_status', 'up')
+            
+            if snmp_latency > 2000:
+                cpu = 0.0
+                loss = 100.0
+                interface = "down"
+            elif snmp_latency > 50:
+                cpu = 95.0
+                loss = 12.5
+                interface = "up"
+                
             net_desc = (
                 f"Equipo: {network_status['nombre']}, "
-                f"CPU: {network_status['cpu_usage']}%, "
+                f"CPU: {cpu}%, "
                 f"Memoria: {network_status['mem_usage']}%, "
-                f"Pérdida de paquetes: {network_status['packet_loss']}%, "
-                f"Estado de interfaz: {network_status['interface_status']}, "
-                f"Latencia de conexión actual: {rt_latency} ms, "
-                f"Jitter actual: {rt_jitter} ms"
+                f"Pérdida de paquetes: {loss}%, "
+                f"Estado de interfaz: {interface}, "
+                f"Latencia de conexión actual (WebSockets): {rt_latency} ms, "
+                f"Jitter actual: {rt_jitter} ms, "
+                f"Latencia SNMP del Router (Prueba de Estrés): {snmp_latency} ms"
             )
 
         # Cruce de zona logic to override network state
         actual_network_state = client_info['zona_estado'] if client_info else settings.ESTADO_RED
+
+        raw_network_logs = network_status.get("raw_network_logs", "No logs available.") if network_status else "No logs available."
 
         # Construct dynamic prompt inserting the ESTADO_RED and zone/client settings
         system_instruction = (
@@ -79,7 +98,12 @@ class ResponderAgent:
             "Tu función es procesar reportes de fallas de internet y actuar de manera síncrona como Operadora Automática y Técnico de Monitoreo.\n\n"
             f"INFORMACIÓN DEL CLIENTE CONECTADO:\n{client_desc}\n\n"
             f"ESTADO DE MONITOREO DE RED DE LA ZONA (SNMP Mock):\n{net_desc}\n\n"
+            f"HISTORIAL DE LOGS DE RED DE SNMP DEL CLIENTE (Manejado por Logs):\n{raw_network_logs}\n\n"
             f"ESTADO GLOBAL/ZONAL DE RED ACTUAL: '{actual_network_state}'\n\n"
+            "### REGLA OBLIGATORIA DE ANÁLISIS PREVIO DE LOGS:\n"
+            "Tienes terminantemente prohibido dar un diagnóstico o respuesta al cliente sin realizar un análisis previo de las últimas líneas de logs de red SNMP arriba indicadas.\n"
+            "Evalúa la latencia, CPU y estado del enlace del cliente según los logs. Si los logs indican un estado UP, responde de acuerdo a eso. "
+            "Si indican un estado DOWN o WARNING (Latencia alta), menciona explícitamente los valores detectados en el log al cliente.\n\n"
             "Debes seguir estas REGLAS DE COMPORTAMIENTO al pie de la letra:\n\n"
             "### 1. EVALUACIÓN Y CLASIFICACIÓN (HU-03) \n"
             "Analiza el texto transcrito del cliente y clasifícalo estrictamente en uno de estos 4 niveles de gravedad:\n"
