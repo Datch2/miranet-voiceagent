@@ -12,7 +12,7 @@ El proyecto maneja una arquitectura distribuida de tipo **Mánager - Agente** de
 
 ```
                        ┌──────────────────────────────────────────────┐
-                       │      SERVIDOR CENTRAL (165.227.80.77)        │
+                       │      SERVIDOR CENTRAL (165.227.XX.XX)        │
                        │                                              │
                        │    ┌────────────────┐   ┌────────────────┐   │
                        │    │  Web Frontend  │   │  FastAPI (Py)  │   │
@@ -35,13 +35,13 @@ El proyecto maneja una arquitectura distribuida de tipo **Mánager - Agente** de
                               ▼ (SNMP Port 161 UDP)                               ▼ (SNMP Port 161 UDP)
               ┌───────────────────────────────┐                   ┌───────────────────────────────┐
               │  CLIENTE NODE 1 (RT000002)    │                   │  CLIENTE NODE 2 (RT000001)    │
-              │       IP: 146.190.222.105     │                   │       IP: 147.182.138.56      │
+              │       IP: 146.190.XX.XX       │                   │       IP: 147.182.XX.XX       │
               │  [Contenedor Docker snmp_client]│                 │  [Contenedor Docker snmp_client]│
               └───────────────────────────────┘                   └───────────────────────────────┘
 ```
 
 ### 1. Servidor Central (Mánager)
-IP Pública: `165.227.80.77`. Aloja y orquesta los servicios centrales:
+IP Pública: `165.227.XX.XX`. Aloja y orquesta los servicios centrales:
 *   **Web Portal (Frontend):** Interfaz web interactiva cliente-operador con osciloscopio de audio.
 *   **Voice Agent API (Backend):** Lógica del agente en Python (`responder.py`). Analiza el DNI del cliente, lee el log `/root/miranet-voiceagent/logs/network.log` para revisar el router asociado y genera la respuesta técnica usando el LLM.
 *   **Motor LLM (Ollama):** Servicio local de IA (modelo LLaMA) para procesar el lenguaje natural.
@@ -51,8 +51,8 @@ IP Pública: `165.227.80.77`. Aloja y orquesta los servicios centrales:
 
 ### 2. Nodos Clientes (Agentes)
 Representan los enrutadores de los abonados en droplets independientes de Linux:
-*   **Cliente 1 (RT000002) - IP `146.190.222.105`:** En línea. Corre un contenedor `snmp_client` exponiendo métricas del sistema.
-*   **Cliente 2 (RT000001) - IP `147.182.138.56`:** Utilizado para simular fallas apagando su agente.
+*   **Cliente 1 (RT000002) - IP `146.190.XX.XX`:** En línea. Corre un contenedor `snmp_client` exponiendo métricas del sistema.
+*   **Cliente 2 (RT000001) - IP `147.182.XX.XX`:** Utilizado para simular fallas apagando su agente.
 *   *Nota: Por motivos de seguridad, los clientes tienen configurado su firewall para responder a las consultas SNMP (Puerto 161 UDP) únicamente si provienen de la IP del Servidor Central.*
 
 ---
@@ -146,7 +146,7 @@ nohup python3 /root/miranet-voiceagent/scratch/fibonacci.py > /dev/null 2>&1 &
 ## 🎮 Simulación de Escenarios para la Defensa
 
 ### Escenario A: Caída Total Física de Red (Cliente 2 - DNI `12345678`)
-1.  **Provocar la falla:** Entra en el SSH del **Cliente 2 (`147.182.138.56`)** y apaga su agente:
+1.  **Provocar la falla:** Entra en el SSH del **Cliente 2 (`147.182.XX.XX`)** y apaga su agente:
     ```bash
     docker stop snmp_client
     ```
@@ -155,7 +155,7 @@ nohup python3 /root/miranet-voiceagent/scratch/fibonacci.py > /dev/null 2>&1 &
 4.  **Recuperar el router:** Corre `docker start snmp_client` en el Cliente 2 para ponerlo en línea nuevamente.
 
 ### Escenario B: Saturación por Consumo de CPU (Cliente 1 - DNI `87654321`)
-1.  **Provocar la saturación:** Entra en el SSH del **Cliente 1 (`146.190.222.105`)** y corre:
+1.  **Provocar la saturación:** Entra en el SSH del **Cliente 1 (`146.190.XX.XX`)** y corre:
     ```bash
     cat /dev/urandom | gzip -9 > /dev/null &
     ```
