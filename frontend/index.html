@@ -506,7 +506,9 @@
                 })
                 .then(data => {
                     console.log(`[Miranet Authentication] Successful lookup response:`, data);
-                    window.location.href = `agent.html?type=${encodeURIComponent(payload.type)}&value=${encodeURIComponent(payload.value)}`;
+                    sessionStorage.setItem('login_type', payload.type);
+                    sessionStorage.setItem('login_value', payload.value);
+                    window.location.href = 'agent.html';
                 })
                 .catch(err => {
                     console.error("[Miranet Authentication] Error:", err);

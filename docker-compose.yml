@@ -6,9 +6,9 @@ services:
     container_name: miranet-mysql-db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: "root"
+      MYSQL_ROOT_PASSWORD: "MiranetSecureDb2026!"
     ports:
-      - "3307:3306"
+      - "3308:3306"
     volumes:
       - mysql_data:/var/lib/mysql
 
@@ -22,7 +22,7 @@ services:
       - DB_HOST=db
       - DB_PORT=3306
       - DB_USER=root
-      - DB_PASSWORD=root
+      - DB_PASSWORD=MiranetSecureDb2026!
       - DB_NAME=miranet_db
       - DB_NAME_TELEMETRIA=cacti
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
@@ -37,7 +37,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   cacti:
-    build: ./cacti_docker
+    image: php:8.1-apache
     container_name: miranet-cacti-web
     restart: always
     ports:
@@ -45,7 +45,14 @@ services:
     environment:
       - RUNNING_IN_DOCKER=yes
     volumes:
-      - D:\XAMMP\htdocs\cacti:/var/www/html/cacti
+      - ./cacti:/var/www/html/cacti
+    command: >
+      bash -c "
+      apt-get update && apt-get install -y rrdtool snmp libpng-dev &&
+      docker-php-ext-install mysqli pdo_mysql gd &&
+      docker-php-ext-enable mysqli pdo_mysql gd &&
+      exec apache2-foreground
+      "
     depends_on:
       - db
 

@@ -173,6 +173,86 @@ async def buscar_cliente(type: str, value: str):
             status_code=500
         )
 
+@app.post("/api/v1/telemetry/report", tags=["Telemetry"])
+async def report_telemetry(payload: dict):
+    """
+    Endpoint for clients to report router SNMP latency securely over HTTP.
+    """
+    router_id = payload.get("router_id")
+    latency = payload.get("latencia")
+    if not router_id or latency is None:
+        return JSONResponse(content={"status": "error", "message": "Missing router_id or latencia"}, status_code=400)
+    
+    try:
+        if db.pool_telemetria:
+            import aiomysql
+            async with db.pool_telemetria.acquire() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("INSERT INTO telemetria_snmp (router_id, latencia) VALUES (%s, %s);", (router_id, latency))
+                    await conn.commit()
+        elif db.use_sqlite:
+            import sqlite3
+            import asyncio
+            def _insert():
+                conn = sqlite3.connect(db.sqlite_path_telemetria)
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("INSERT INTO telemetria_snmp (router_id, latencia) VALUES (?, ?);", (router_id, latency))
+                    conn.commit()
+                finally:
+                    conn.close()
+            await asyncio.to_thread(_insert)
+            
+        return JSONResponse(content={"status": "success", "message": "Telemetry logged successfully"}, status_code=200)
+    except Exception as e:
+        logger.error(f"Error logging telemetry via API: {e}", exc_info=True)
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+@app.post("/api/v1/telemetry/incident", tags=["Telemetry"])
+async def report_incident(payload: dict):
+    """
+    Endpoint for clients to report voice efficiency incidents securely over HTTP.
+    """
+    router_id = payload.get("router_id")
+    tipo = payload.get("tipo_incidencia")
+    valor = payload.get("valor_capturado")
+    metrica = payload.get("metrica_eficiencia")
+    solucion = payload.get("solucion_automatica")
+    
+    if not router_id or not tipo:
+        return JSONResponse(content={"status": "error", "message": "Missing router_id or tipo_incidencia"}, status_code=400)
+        
+    try:
+        if db.pool_telemetria:
+            import aiomysql
+            async with db.pool_telemetria.acquire() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "INSERT INTO log_incidencias (router_id, tipo_incidencia, valor_capturado, metrica_eficiencia, solucion_automatica, estado) VALUES (%s, %s, %s, %s, %s, %s);",
+                        (router_id, tipo, valor, metrica, solucion, "Resuelto")
+                    )
+                    await conn.commit()
+        elif db.use_sqlite:
+            import sqlite3
+            import asyncio
+            def _insert():
+                conn = sqlite3.connect(db.sqlite_path_telemetria)
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO log_incidencias (router_id, tipo_incidencia, valor_capturado, metrica_eficiencia, solucion_automatica, estado) VALUES (?, ?, ?, ?, ?, ?);",
+                        (router_id, tipo, valor, metrica, solucion, "Resuelto")
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+            await asyncio.to_thread(_insert)
+            
+        return JSONResponse(content={"status": "success", "message": "Incident logged successfully"}, status_code=200)
+    except Exception as e:
+        logger.error(f"Error logging incident via API: {e}", exc_info=True)
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
 @app.get("/api/v1/sistema/status", tags=["System"])
 async def system_status():
     """

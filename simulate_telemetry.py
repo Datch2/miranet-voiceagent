@@ -1,16 +1,14 @@
 import time
 import random
 import threading
-import mysql.connector
+import json
+import urllib.request
 from datetime import datetime
 
-# Database Connection Settings
-DB_CONFIG = {
-    'host': '127.0.0.1',
-    'port': 3307,
-    'user': 'root',
-    'password': '',
-    'database': 'cacti'
+# API Connection Settings (Exposed on public port 8000)
+API_CONFIG = {
+    'host': '165.227.80.77',
+    'port': 8000
 }
 
 class TelemetrySimulator:
@@ -21,68 +19,65 @@ class TelemetrySimulator:
         self.router_id = "RT000002"
         self.packets_inserted = 0
 
-    def connect_db(self):
-        return mysql.connector.connect(**DB_CONFIG)
-
     def log_telemetry(self, latency):
         try:
-            conn = self.connect_db()
-            cursor = conn.cursor()
-            query = "INSERT INTO telemetria_snmp (router_id, latencia) VALUES (%s, %s);"
-            cursor.execute(query, (self.router_id, latency))
-            conn.commit()
-            cursor.close()
-            conn.close()
-            self.packets_inserted += 1
-            return True
+            url = f"http://{API_CONFIG['host']}:{API_CONFIG['port']}/api/v1/telemetry/report"
+            payload = {"router_id": self.router_id, "latencia": latency}
+            data = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(
+                url, 
+                data=data, 
+                headers={'Content-Type': 'application/json'}, 
+                method='POST'
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    self.packets_inserted += 1
+                    return True
+            return False
         except Exception as e:
-            print(f"\n[ERROR] No se pudo escribir en MySQL cacti: {e}")
+            print(f"\n[ERROR] No se pudo escribir telemetría vía API: {e}")
             return False
 
     def log_incident(self, tipo, valor, metrica, solucion):
         try:
-            conn = self.connect_db()
-            cursor = conn.cursor()
-            query = """
-            INSERT INTO log_incidencias (router_id, tipo_incidencia, valor_capturado, metrica_eficiencia, solucion_automatica, estado)
-            VALUES (%s, %s, %s, %s, %s, %s);
-            """
-            cursor.execute(query, (self.router_id, tipo, valor, metrica, solucion, "Resuelto"))
-            conn.commit()
-            cursor.close()
-            conn.close()
-            print(f"\n[AUDITORÍA] Incidencia registrada en log_incidencias: {tipo} | Estado: Resuelto")
-            return True
+            url = f"http://{API_CONFIG['host']}:{API_CONFIG['port']}/api/v1/telemetry/incident"
+            payload = {
+                "router_id": self.router_id,
+                "tipo_incidencia": tipo,
+                "valor_capturado": valor,
+                "metrica_eficiencia": metrica,
+                "solucion_automatica": solucion
+            }
+            data = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(
+                url, 
+                data=data, 
+                headers={'Content-Type': 'application/json'}, 
+                method='POST'
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    print(f"\n[AUDITORÍA] Incidencia registrada vía API: {tipo} | Estado: Resuelto")
+                    return True
+            return False
         except Exception as e:
-            print(f"\n[ERROR] No se pudo escribir incidencia: {e}")
+            print(f"\n[ERROR] No se pudo escribir incidencia vía API: {e}")
             return False
 
     def check_agent_resolution(self):
         """
-        Check if the voice agent resolved the issue by updating the zone status to 'operativo' in miranet_db.
+        Check if the voice agent resolved the issue by updating the zone status to 'operativo' in miranet_db via the API.
         """
         try:
-            conn = mysql.connector.connect(
-                host=DB_CONFIG['host'],
-                port=DB_CONFIG['port'],
-                user=DB_CONFIG['user'],
-                password=DB_CONFIG['password'],
-                database='miranet_db'
-            )
-            cursor = conn.cursor(dictionary=True)
-            query = """
-                SELECT z.estado 
-                FROM clientes c 
-                JOIN zonas z ON c.zona_id = z.id 
-                WHERE c.router_sn = %s;
-            """
-            cursor.execute(query, (self.router_id,))
-            row = cursor.fetchone()
-            cursor.close()
-            conn.close()
-            
-            if row and row['estado'].lower() == 'operativo':
-                return True
+            url = f"http://{API_CONFIG['host']}:{API_CONFIG['port']}/api/v1/cliente/buscar?type=RouterSN&value={self.router_id}"
+            req = urllib.request.Request(url, method='GET')
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    res_data = json.loads(response.read().decode('utf-8'))
+                    client = res_data.get("client")
+                    if client and client.get("zona_estado", "").lower() == 'operativo':
+                        return True
         except Exception:
             pass
         return False
@@ -130,14 +125,18 @@ class TelemetrySimulator:
 def main_menu():
     simulator = TelemetrySimulator()
     
-    # Verify DB connection on startup
+    # Verify API Gateway connection on startup
     try:
-        conn = simulator.connect_db()
-        conn.close()
-        db_status = "ONLINE (Puerto 3307)"
+        url = f"http://{API_CONFIG['host']}:{API_CONFIG['port']}/health"
+        req = urllib.request.Request(url, method='GET')
+        with urllib.request.urlopen(req, timeout=5) as response:
+            if response.status == 200:
+                api_status = f"ONLINE (Puerto {API_CONFIG['port']})"
+            else:
+                api_status = f"HTTP ERROR {response.status}"
     except Exception as e:
-        db_status = f"DESCONECTADO ({e})"
-        print(f"[ALERTA] MySQL no está respondiendo en el puerto 3307. Asegúrate de encender XAMPP.")
+        api_status = f"DESCONECTADO ({e})"
+        print(f"[ALERTA] El Servidor del Agente de Voz no está respondiendo en el puerto {API_CONFIG['port']}.")
         print(f"Detalles: {e}")
         return
 
@@ -147,7 +146,7 @@ def main_menu():
         print("\n" + "="*60)
         print("     ORQUESTRADOR DE SIMULACIÓN DE TELEMETRÍA - MIRANET SAC")
         print("="*60)
-        print(f" Base de Datos: MySQL 'cacti' | Estado: {db_status}")
+        print(f" Servidor API: HTTP {api_status}")
         print(f" Paquetes SNMP enviados en esta sesión: {simulator.packets_inserted}")
         print(f" Modo de simulación activo: {simulator.mode} | Router SN: {simulator.router_id}")
         print("-"*60)

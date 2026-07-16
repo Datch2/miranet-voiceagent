@@ -733,6 +733,38 @@ class DatabaseManager:
                 logger.error(f"MySQL get_network_status_by_zone error: {e}")
                 return None
 
+    async def get_latest_router_latency(self, router_id: str) -> float:
+        """Get the latest recorded SNMP latency for a specific router from Cacti database."""
+        if self.use_sqlite:
+            import sqlite3
+            def _fetch():
+                conn = sqlite3.connect(self.sqlite_path_telemetria)
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT latencia FROM telemetria_snmp WHERE router_id = ? ORDER BY id DESC LIMIT 1;")
+                    row = cursor.fetchone()
+                    return row[0] if row else 15.0
+                except Exception:
+                    return 15.0
+                finally:
+                    conn.close()
+            try:
+                return await asyncio.to_thread(_fetch)
+            except Exception:
+                return 15.0
+        else:
+            if not self.pool_telemetria:
+                return 15.0
+            try:
+                async with self.pool_telemetria.acquire() as conn:
+                    async with conn.cursor() as cur:
+                        await cur.execute("SELECT latencia FROM telemetria_snmp WHERE router_id = %s ORDER BY id DESC LIMIT 1;", (router_id,))
+                        row = await cur.fetchone()
+                        return row[0] if row else 15.0
+            except Exception as e:
+                logger.error(f"MySQL get_latest_router_latency error: {e}")
+                return 15.0
+
     async def create_incident_and_report(
         self,
         session_id: str,

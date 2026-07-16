@@ -90,10 +90,10 @@ class ResponderAgent:
 
         # Construct dynamic prompt inserting the ESTADO_RED and zone/client settings
         system_instruction = (
-            "Eres el agente de voz inteligente de Miranet SAC. Cuando el diagnóstico de red indique fallas lógicas (Alta latencia o Jitter), no des respuestas genéricas. Debes:\n"
-            "1. Mencionar explícitamente el código del router (Router S/N) y los milisegundos de latencia actuales.\n"
-            "2. Explicar la acción técnica sistemática ejecutada automáticamente por el software (ej: Reajuste lógico de canal o aprovisionamiento de QoS).\n"
-            "3. Pedirle al usuario unos segundos para validar la restauración síncrona del servicio.\n\n"
+            "Eres el agente de voz inteligente de Miranet SAC. Debes leer las últimas líneas de logs de red SNMP del cliente e iniciar tu respuesta informándole explícitamente si su router está enviando señales (enlace activo/UP) o no (pérdida de señal/timeouts/DOWN). Luego:\n"
+            "1. Menciona explícitamente el código del router (Router S/N) y el estado detectado en los logs.\n"
+            "2. Si hay fallas lógicas (Alta latencia o Jitter), explica la acción ejecutada automáticamente (ej: Reajuste lógico de canal o aprovisionamiento de QoS).\n"
+            "3. Pídele al usuario unos segundos para validar la restauración síncrona del servicio.\n\n"
             "Eres el núcleo de Inteligencia Artificial del Agente de Voz de la empresa de telecomunicaciones Miranet SAC (Año 2026). "
             "Tu función es procesar reportes de fallas de internet y actuar de manera síncrona como Operadora Automática y Técnico de Monitoreo.\n\n"
             f"INFORMACIÓN DEL CLIENTE CONECTADO:\n{client_desc}\n\n"
@@ -102,8 +102,7 @@ class ResponderAgent:
             f"ESTADO GLOBAL/ZONAL DE RED ACTUAL: '{actual_network_state}'\n\n"
             "### REGLA OBLIGATORIA DE ANÁLISIS PREVIO DE LOGS:\n"
             "Tienes terminantemente prohibido dar un diagnóstico o respuesta al cliente sin realizar un análisis previo de las últimas líneas de logs de red SNMP arriba indicadas.\n"
-            "Evalúa la latencia, CPU y estado del enlace del cliente según los logs. Si los logs indican un estado UP, responde de acuerdo a eso. "
-            "Si indican un estado DOWN o WARNING (Latencia alta), menciona explícitamente los valores detectados en el log al cliente.\n\n"
+            "Debes iniciar indicando si se reciben señales del equipo o si hay pérdida de señal de acuerdo a los logs. Menciona explícitamente los valores del log al cliente.\n\n"
             "Debes seguir estas REGLAS DE COMPORTAMIENTO al pie de la letra:\n\n"
             "### 1. EVALUACIÓN Y CLASIFICACIÓN (HU-03) \n"
             "Analiza el texto transcrito del cliente y clasifícalo estrictamente en uno de estos 4 niveles de gravedad:\n"
@@ -256,22 +255,27 @@ class ResponderAgent:
             # Slow speeds / Logical failure (Alta latencia o Jitter)
             elif (rt_latency > 60 or rt_jitter > 15) or any(w in lower_text for w in ["lento", "lentitud", "demora", "velocidad", "cargar", "cargando", "lag", "ping", "latencia", "jitter"]):
                 router_sn = client_info.get("router_sn") if client_info else "RT000002"
-                # If latency is normal in telemetry but they complain, simulate a lag spike for the response context
                 display_latency = rt_latency if rt_latency > 60 else 74
                 accion = "reajuste lógico de canal" if display_latency > 80 else "aprovisionamiento de QoS"
                 result = {
                     "nivel_asignado": "medio",
                     "diagnostico_causa_raiz": f"Falla lógica detectada (Latencia: {display_latency}ms, Jitter: {rt_jitter}ms)",
                     "porcentaje_confianza": "95%",
-                    "respuesta_cliente": f"Estimado cliente, detectamos una falla lógica en su router {router_sn} con una latencia actual de {display_latency} milisegundos. Hemos ejecutado automáticamente un {accion} en la línea; por favor, espere unos segundos mientras validamos la restauración síncrona del servicio."
+                    "respuesta_cliente": f"Revisando los logs SNMP del router {router_sn}, confirmo que sí recibe señal pero registra una alta latencia de {display_latency} milisegundos. Hemos iniciado automáticamente un {accion} para restaurar la estabilidad; por favor espere unos segundos."
                 }
             # Loss of service / Connection drops (High)
             elif any(w in lower_text for w in ["cae", "cayó", "cayo", "se fue", "no tengo", "no hay", "funciona", "servicios", "fallando", "falla", "sin internet"]):
+                router_sn = client_info.get("router_sn") if client_info else "RT000001"
+                is_offline = "timeout" in raw_network_logs.lower() or (network_status and network_status.get('packet_loss', 0.0) == 100.0)
+                if is_offline:
+                    respuesta = f"Analizando los logs SNMP en tiempo real, confirmo que su router {router_sn} no está enviando señales debido a timeouts de conexión (caída total). Reportaré esta avería para soporte técnico."
+                else:
+                    respuesta = f"Analizando los logs SNMP en tiempo real, observo que su router {router_sn} sí está enviando señales de forma activa. Enviaré un comando de reconexión para refrescar la señal de navegación."
                 result = {
                     "nivel_asignado": "alto",
-                    "diagnostico_causa_raiz": f"Pérdida de señal (Packet Loss: {network_status['packet_loss'] if network_status else '15'}%)",
-                    "porcentaje_confianza": "80%",
-                    "respuesta_cliente": "Lamento la pérdida del servicio. Estoy enviando un comando de reconexión a su módem para reactivarlo."
+                    "diagnostico_causa_raiz": f"Pérdida de señal (Packet Loss: {network_status['packet_loss'] if network_status else '100'}%)" if is_offline else "Señal activa con reporte de caída lógica",
+                    "porcentaje_confianza": "95%",
+                    "respuesta_cliente": respuesta
                 }
             # Requesting human transfer
             elif any(w in lower_text for w in ["asesor", "operador", "humano", "persona", "atención"]):

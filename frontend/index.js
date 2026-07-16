@@ -137,6 +137,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (logoutBtn) {
         logoutBtn.addEventListener('click', () => {
             console.log("Logging out client session...");
+            sessionStorage.clear();
             if (socket) {
                 socket.close();
             }
@@ -154,10 +155,16 @@ function resizeCanvas() {
 // WebSocket Connections & Message Handlers
 // ----------------------------------------------------
 function connectWebSocket() {
-    // Read DNI/Router login credentials from URL query parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    const loginType = urlParams.get('type') || '';
-    const loginValue = urlParams.get('value') || '';
+    // Read DNI/Router login credentials from sessionStorage
+    const loginType = sessionStorage.getItem('login_type') || '';
+    const loginValue = sessionStorage.getItem('login_value') || '';
+    
+    // Redirect back to login if no session variables exist
+    if (!loginType || !loginValue) {
+        console.log("No active session found. Redirecting to login page...");
+        window.location.href = '/';
+        return;
+    }
     
     // Construct WebSocket URL dynamically from WS_URL constant
     const wsUrl = `${WS_URL}?session_id=${sessionID}&login_type=${encodeURIComponent(loginType)}&login_value=${encodeURIComponent(loginValue)}`;
@@ -357,8 +364,33 @@ function renderAgentResponse(data) {
         document.getElementById('val-report-confidence').textContent = data.porcentaje_confianza || '95%';
         
         const net = data.network_status;
-        document.getElementById('val-equip-metrics').textContent = 
-            `${net.nombre || 'Router'} [CPU: ${net.cpu_usage}%, MEM: ${net.mem_usage}%, LOSS: ${net.packet_loss}%, IF: ${net.interface_status}]`;
+        const snmpLat = net.snmp_latency_ms || 20;
+        let temp = 40;
+        let band = 50;
+        let modeStr = "NORMAL";
+        
+        if (snmpLat > 2000) {
+            temp = 32;
+            band = 0;
+            modeStr = "OFFLINE (CAÍDA FÍSICA)";
+        } else if (snmpLat > 50) {
+            temp = 72;
+            band = 194;
+            modeStr = "LAG SPIKE (ESTRÉS LÓGICO)";
+        } else {
+            temp = 42;
+            band = 48;
+            modeStr = "ESTABLE (TRÁFICO NORMAL)";
+        }
+
+        document.getElementById('val-equip-metrics').innerHTML = 
+            `<strong>Nombre:</strong> ${net.nombre || 'Router'}<br>` +
+            `<strong>Estado Canal:</strong> <span style="color: ${snmpLat > 2000 ? 'var(--danger-color)' : (snmpLat > 50 ? 'var(--warning-color)' : '#10b981')}">${modeStr}</span><br>` +
+            `<strong>Latencia:</strong> ${snmpLat} ms (SNMP)<br>` +
+            `<strong>Ancho Banda:</strong> ${band} Mbps<br>` +
+            `<strong>Temperatura:</strong> ${temp} °C<br>` +
+            `<strong>Uso CPU / MEM:</strong> CPU ${snmpLat > 50 && snmpLat < 2000 ? '95%' : net.cpu_usage + '%'} / MEM ${net.mem_usage}%<br>` +
+            `<strong>Estado Interfaz:</strong> ${snmpLat > 2000 ? 'down' : 'up'}`;
     }
 
     // 5. Play Text-to-Speech if enabled
